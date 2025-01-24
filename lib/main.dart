@@ -38,39 +38,63 @@ import 'controllers/language_controller.dart';
 import 'package:in_app_update/in_app_update.dart';
 
 Future<void> main() async {
-  if (kReleaseMode) {
-    await dotenv.load(fileName: '.env');
-  }
-  if (kDebugMode) {
-    await dotenv.load(fileName: '.env');
-  }
-  if (kProfileMode) {
-    await dotenv.load(fileName: '.env');
-  }
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  await FirebaseApi().initNotifications();
-  await EasyLocalization.ensureInitialized();
-  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  // Initialize Firebase
+  WidgetsFlutterBinding.ensureInitialized(); // Ensures proper initialization before any async calls
 
+  // Load environment variables
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    print('Error loading .env file: $e');
+  }
+
+  // Initialize Firebase
+  try {
+    await Firebase.initializeApp();
+    print("Firebase initialized successfully");
+  } catch (e) {
+    print("Error initializing Firebase: $e");
+  }
+
+  // Initialize notifications
+  try {
+    await FirebaseApi().initNotifications();
+    print("Firebase notifications initialized");
+  } catch (e) {
+    print("Error initializing notifications: $e");
+  }
+
+  // Initialize localization
+  try {
+    await EasyLocalization.ensureInitialized();
+  } catch (e) {
+    print("Error initializing EasyLocalization: $e");
+  }
+
+  // Lock orientation to portrait
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // Set up shared preferences
   final prefs = await SharedPreferences.getInstance();
   final showHome = prefs.getBool('showHome') ?? false;
 
+  // Set HTTP overrides
   HttpOverrides.global = MyHttpOverrides();
 
+  // Run the app
   runApp(MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => LanguageController()),
-      ],
-      child: EasyLocalization(
-          supportedLocales: const [Locale('en', 'US'), Locale('fr', 'FR')],
-          path:
-              'assets/translations', // <-- change the path of the translation files
-          fallbackLocale: const Locale('en', 'US'),
-          useFallbackTranslations: true,
-          child: Phoenix(child: MyApp(showHome: showHome)))));
+    providers: [
+      ChangeNotifierProvider(create: (_) => LanguageController()),
+    ],
+    child: EasyLocalization(
+      supportedLocales: const [Locale('en', 'US'), Locale('fr', 'FR')],
+      path: 'assets/translations', // Path to translation files
+      fallbackLocale: const Locale('en', 'US'),
+      useFallbackTranslations: true,
+      child: Phoenix(child: MyApp(showHome: showHome)),
+    ),
+  ));
 }
+
 
 class MyApp extends StatefulWidget {
   final bool showHome;

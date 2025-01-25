@@ -1,5 +1,4 @@
-// ignore_for_file: public_member_api_docs, sort_constructors_first, avoid_unnecessary_containers
-
+import 'package:firebase_core/firebase_core.dart';
 import 'package:speed_ios/routes/routes.provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
@@ -23,9 +22,7 @@ import '../../../utils/colors.dart';
 import '../../widgets/heading.dart';
 
 class VerifyPhoneNumber extends StatefulWidget {
-  const VerifyPhoneNumber({
-    Key? key,
-  }) : super(key: key);
+  const VerifyPhoneNumber({Key? key}) : super(key: key);
 
   @override
   State<VerifyPhoneNumber> createState() => _VerifyPhoneNumberState();
@@ -38,44 +35,64 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber> {
   String sentOtp = "";
   String? token;
   bool isRegisterLoading = false;
-  final _firebaseMessaging = FirebaseMessaging.instance;
-  final _firestore = FirebaseFirestore.instance;
-  FirebaseApi firebaseApi = FirebaseApi();
+  // FirebaseMessaging? _firebaseMessaging;
+  // FirebaseFirestore? _firestore;
+  // FirebaseApi firebaseApi = FirebaseApi();
   final TextEditingController _phoneNumberController = TextEditingController();
+
   @override
   void initState() {
-    loadFromJson();
     super.initState();
-    getToken();
-    registerClientBloc = BlocProvider.of<RegisterClientBloc>(context);
+    // _initializeFirebase();
   }
 
+  // Future<void> _initializeFirebase() async {
+  //   // Ensure Firebase is initialized before using its services
+  //   if (Firebase.apps.isEmpty) {
+  //     await Firebase.initializeApp();
+  //   }
+
+  //   setState(() {
+  //     _firebaseMessaging = FirebaseMessaging.instance;
+  //     _firestore = FirebaseFirestore.instance;
+  //   });
+
+  //   loadFromJson();
+  //   getToken();
+  //   registerClientBloc = BlocProvider.of<RegisterClientBloc>(context);
+  // }
+
   String? countryCode, phoneNUmber;
+
   @override
   void dispose() {
     _phoneNumberController.dispose();
     super.dispose();
   }
 
-  void getToken() async {
-    await _firebaseMessaging.requestPermission();
-    final fcmToken = await _firebaseMessaging.getToken();
+  // void getToken() async {
+  //   if (_firebaseMessaging == null) return;
 
-    token = fcmToken;
-    if (kDebugMode) {
-      print("MyToken $token");
-    }
-  }
+  //   await _firebaseMessaging!.requestPermission();
+  //   final fcmToken = await _firebaseMessaging!.getToken();
+
+  //   token = fcmToken;
+  //   if (kDebugMode) {
+  //     print("MyToken $token");
+  //   }
+  // }
 
   void saveTokenDevice(String userId, String token) async {
-    saveToken(token.toString(), userId);
+    // if (_firestore == null) return;
+    // saveToken(token.toString(), userId);
   }
 
   void saveToken(String token, String userId) async {
-    await _firestore
-        .collection('clientTokens')
-        .doc(userId)
-        .set({'token': token});
+    // if (_firestore == null) return;
+    // await _firestore!
+    //     .collection('clientTokens')
+    //     .doc(userId)
+    //     .set({'token': token});
   }
 
   Future<String> loadFromJson() async {
@@ -84,7 +101,6 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber> {
 
   TextEditingController controller = TextEditingController();
   String? data;
-  // Regular expression for the mask "### ### ###"
   final RegExp maskRegExp = RegExp(r'^\d{3} \d{3} \d{3}$');
 
   @override

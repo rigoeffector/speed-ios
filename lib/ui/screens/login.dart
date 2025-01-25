@@ -39,8 +39,8 @@ class _LoginState extends State<Login> {
   bool isRegisterLoading = false;
   bool isPhone = false;
   bool _passwordVisible = false;
-  final _firebaseMessaging = FirebaseMessaging.instance;
-  final _firestore = FirebaseFirestore.instance;
+  // final _firebaseMessaging = FirebaseMessaging.instance;
+  // final _firestore = FirebaseFirestore.instance;
   // FirebaseApi firebaseApi = FirebaseApi();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
@@ -58,24 +58,24 @@ class _LoginState extends State<Login> {
     super.dispose();
   }
 
-  void getToken(String userId) async {
-    await _firebaseMessaging.requestPermission();
-    final fcmToken = await _firebaseMessaging.getToken();
+  // void getToken(String userId) async {
+  //   await _firebaseMessaging.requestPermission();
+  //   final fcmToken = await _firebaseMessaging.getToken();
 
-    token = fcmToken;
-    if (kDebugMode) {
-      print("MyToken $token");
-    }
+  //   token = fcmToken;
+  //   if (kDebugMode) {
+  //     print("MyToken $token");
+  //   }
 
-    saveToken(token.toString(), userId);
-  }
+  //   saveToken(token.toString(), userId);
+  // }
 
-  void saveToken(String token, String userId) async {
-    await _firestore
-        .collection('clientTokens')
-        .doc(userId)
-        .set({'token': token});
-  }
+  // void saveToken(String token, String userId) async {
+  //   await _firestore
+  //       .collection('clientTokens')
+  //       .doc(userId)
+  //       .set({'token': token});
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -375,7 +375,7 @@ class _LoginState extends State<Login> {
                       String obtainedClientId =
                           state.userLoginModel.userLoginData!.id.toString();
 
-                      getToken(obtainedClientId);
+                      // getToken(obtainedClientId);
 
                       context.safeGoNamed(home, params: {
                         'userId': obtainedClientId,

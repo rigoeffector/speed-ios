@@ -38,46 +38,34 @@ import 'controllers/language_controller.dart';
 import 'package:in_app_update/in_app_update.dart';
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized(); // Ensures proper initialization before any async calls
+  WidgetsFlutterBinding.ensureInitialized();
 
-  // Load environment variables
-  try {
-    await dotenv.load(fileName: '.env');
-  } catch (e) {
-    print('Error loading .env file: $e');
-  }
+// Ensure Firebase is initialized before other services
+  // try {
+  //   await Firebase.initializeApp();
+  //   print("Firebase initialized successfully");
+  // } catch (e) {
+  //   print("Error initializing Firebase: $e");
+  //   // Optionally handle initialization failure
+  //   return;
+  // }
+  // Initialize core services
+  await Future.wait([
+    dotenv
+        .load(fileName: '.env')
+        .onError((e, _) => print('Error loading .env file: $e')),
+    // FirebaseApi().initNotifications().then((_) => print("Firebase notifications initialized"))
+    //   .onError((e, _) => print("Error initializing notifications: $e")),
+    EasyLocalization.ensureInitialized()
+        .onError((e, _) => print("Error initializing EasyLocalization: $e"))
+  ]);
 
-  // Initialize Firebase
-  try {
-    await Firebase.initializeApp();
-    print("Firebase initialized successfully");
-  } catch (e) {
-    print("Error initializing Firebase: $e");
-  }
-
-  // Initialize notifications
-  try {
-    await FirebaseApi().initNotifications();
-    print("Firebase notifications initialized");
-  } catch (e) {
-    print("Error initializing notifications: $e");
-  }
-
-  // Initialize localization
-  try {
-    await EasyLocalization.ensureInitialized();
-  } catch (e) {
-    print("Error initializing EasyLocalization: $e");
-  }
-
-  // Lock orientation to portrait
+  // Configure app settings
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
-  // Set up shared preferences
   final prefs = await SharedPreferences.getInstance();
   final showHome = prefs.getBool('showHome') ?? false;
 
-  // Set HTTP overrides
   HttpOverrides.global = MyHttpOverrides();
 
   // Run the app
@@ -87,14 +75,13 @@ Future<void> main() async {
     ],
     child: EasyLocalization(
       supportedLocales: const [Locale('en', 'US'), Locale('fr', 'FR')],
-      path: 'assets/translations', // Path to translation files
+      path: 'assets/translations',
       fallbackLocale: const Locale('en', 'US'),
       useFallbackTranslations: true,
       child: Phoenix(child: MyApp(showHome: showHome)),
     ),
   ));
 }
-
 
 class MyApp extends StatefulWidget {
   final bool showHome;

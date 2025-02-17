@@ -71,12 +71,12 @@ dependencies:
   sqflite: ^2.4.1
   toggle_switch: ^2.3.0
   uuid: ^4.5.1
-  firebase_core: ^3.10.1
+  # firebase_core: ^3.10.1
   connectivity_plus: ^2.3.9
-  firebase_auth: 
-  firebase_storage: 
-  firebase_database: 
-  cloud_firestore:
+  # firebase_auth: 
+  # firebase_storage: 
+  # firebase_database: 
+  # cloud_firestore:
   rxdart: ^0.26.0
   firebase_messaging: ^15.2.1
   flutter_local_notifications: ^18.0.1

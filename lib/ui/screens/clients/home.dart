@@ -9,7 +9,7 @@ import 'package:speed_ios/routes/routes.provider.dart';
 import 'package:speed_ios/states/requests/create_request_bloc.dart';
 import 'package:speed_ios/utils/colors.dart';
 import 'package:speed_ios/utils/notifiers.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -838,9 +838,9 @@ class _HomeState extends State<Home> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 SizedBox(
-                                    width: 280,
+                                    width: MediaQuery.of(context).size.width - 200,
                                     child: Text(
-                                      "CDRIVER / MOTOBIKER",
+                                      "DRIVER / MOTOBIKER",
                                       maxLines: 1,
                                       // softWrap: false,
                                       textAlign: TextAlign.left,
@@ -1372,13 +1372,13 @@ class _HomeState extends State<Home> {
     );
   }
 
-  final _firestore = FirebaseFirestore.instance;
+  // final _firestore = FirebaseFirestore.instance;
 
-  void sendDriverNotification(String driverId, String title, String msg) async {
-    DocumentSnapshot snap =
-        await _firestore.collection("driverTokens").doc(driverId).get();
-    String token = snap['token'];
-  }
+  // void sendDriverNotification(String driverId, String title, String msg) async {
+  //   DocumentSnapshot snap =
+  //       await _firestore.collection("driverTokens").doc(driverId).get();
+  //   String token = snap['token'];
+  // }
 
   Future<bool> _onWillPop() async {
     return false;
@@ -1392,7 +1392,7 @@ class _HomeState extends State<Home> {
         appBar: AppBar(
           backgroundColor: primaryColor,
           elevation: 0,
-          title: const Text("Speed"),
+          title: const Text("Speed", style: TextStyle(color: Colors.white),),
           actions: [
             IconButton(
               onPressed: () {
@@ -1556,12 +1556,12 @@ class _HomeState extends State<Home> {
               children: [
                 Image.asset(
                   service['image']!,
-                  scale: 6,
+                  scale: 8,
                 ),
                 const SizedBox(height: 10),
                 Text(
                   service['title']!,
-                  style: const TextStyle(fontSize: 20),
+                  style: const TextStyle(fontSize: 16),
                 ),
               ],
             ),

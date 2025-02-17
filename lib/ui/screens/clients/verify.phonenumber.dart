@@ -1,6 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:speed_ios/routes/routes.provider.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -43,6 +43,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber> {
   @override
   void initState() {
     super.initState();
+    registerClientBloc = BlocProvider.of<RegisterClientBloc>(context);
     // _initializeFirebase();
   }
 

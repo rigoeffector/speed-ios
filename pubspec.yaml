@@ -85,6 +85,7 @@ dependencies:
   in_app_update: ^4.2.3
   url_launcher: ^6.3.1
   http: ^0.13.6
+  flutter_otp_text_field: ^1.5.1+1
 
 
 dev_dependencies:

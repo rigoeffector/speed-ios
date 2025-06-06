@@ -7,7 +7,7 @@ const String FRENCH = 'en';
 const String LANGUAGE_CODE = 'languageCode';
 
 class Strings {
-  static const String appName = 'SPEED';
+  static const String appName = 'Gerayo Amahoro';
   static const String user = 'client';
 }
 

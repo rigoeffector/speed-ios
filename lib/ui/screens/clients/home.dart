@@ -1342,6 +1342,106 @@ class _HomeState extends State<Home> {
           const Spacer(), // Pushes the logout button to the bottom
           ListTile(
             leading: const Icon(
+              Icons.delete_forever,
+              color: Colors.red,
+            ),
+            title: const Text(
+              'Delete Account',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w700,
+                fontSize: 18,
+              ),
+            ),
+            onTap: () {
+              // Close drawer first
+              Navigator.pop(context);
+              
+              // Show confirmation dialog
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title: const Text('Delete Account'),
+                    content: const Text('Are you sure you want to permanently delete your account? This action cannot be undone.'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red,
+                        ),
+                        onPressed: () async {
+                          // Delete account functionality would go here
+                          // For now, we'll just show a success message and log out
+                          Navigator.pop(context); // Close dialog
+                          
+                          // Store the navigator context to use later
+                          final navigatorContext = Navigator.of(context);
+                          
+                          // Create a completer to control when the dialog closes
+                          final completer = Completer();
+                          
+                          // Show loading indicator
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (BuildContext dialogContext) {
+                              // When the completer completes, close the dialog
+                              completer.future.then((_) {
+                                Navigator.of(dialogContext).pop();
+                              });
+                              
+                              return const AlertDialog(
+                                content: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    CircularProgressIndicator(),
+                                    SizedBox(height: 16),
+                                    Text('Deleting account...'),
+                                  ],
+                                ),
+                              );
+                            },
+                          );
+                          
+                          try {
+                            // Simulate account deletion API call
+                            await Future.delayed(const Duration(seconds: 2));
+                            
+                            // Clear all shared preferences (same as logout)
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.clear();
+                            
+                            // Complete the completer to close the dialog
+                            completer.complete();
+                            
+                            // Wait a moment for the dialog to close
+                            await Future.delayed(const Duration(milliseconds: 300));
+                            
+                            // Navigate to splash screen
+                            navigatorContext.pushNamedAndRemoveUntil(splash, (route) => false);
+                          } catch (e) {
+                            // If there's an error, still close the dialog
+                            completer.complete();
+                            // Show error message
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error: ${e.toString()}')),
+                            );
+                          }
+                        },
+                        child: const Text('Delete'),
+                      ),
+                    ],
+                  );
+                },
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(
               Icons.logout,
               color: Colors.white,
             ),
@@ -1392,7 +1492,7 @@ class _HomeState extends State<Home> {
         appBar: AppBar(
           backgroundColor: primaryColor,
           elevation: 0,
-          title: const Text("Speed", style: TextStyle(color: Colors.white),),
+          title: const Text("Gerayo Amahoro Speed", style: TextStyle(color: Colors.white),),
           actions: [
             IconButton(
               onPressed: () {

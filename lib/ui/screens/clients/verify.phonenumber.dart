@@ -1,8 +1,9 @@
-import 'package:firebase_core/firebase_core.dart';
+import 'dart:convert';
 import 'package:speed_ios/routes/routes.provider.dart';
 // import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_otp_text_field/flutter_otp_text_field.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -29,6 +30,69 @@ class VerifyPhoneNumber extends StatefulWidget {
 }
 
 class _VerifyPhoneNumberState extends State<VerifyPhoneNumber> {
+  // API endpoint for OTP operations
+  final String baseUrl = 'https://server.yunotify.com/api/client';
+  bool isLoadingOtp = false;
+
+  // Send OTP to the user's phone number
+  Future<bool> sendOtpToPhone(String phoneNumber) async {
+    setState(() {
+      isLoadingOtp = true;
+    });
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/start'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phoneNumber,
+        }),
+      );
+      
+      setState(() {
+        isLoadingOtp = false;
+      });
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      } else {
+        final errorResponse = jsonDecode(response.body);
+        showErrorAlert(errorResponse['message'] ?? 'Failed to send OTP'.tr(), context);
+        return false;
+      }
+    } catch (e) {
+      setState(() {
+        isLoadingOtp = false;
+      });
+      showErrorAlert('Network error. Please try again'.tr(), context);
+      return false;
+    }
+  }
+
+  // Verify OTP entered by the user
+  Future<bool> verifyOtp(String phoneNumber, String otp) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phoneNumber,
+          'otp': otp,
+        }),
+      );
+      
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return true;
+      } else {
+        final errorResponse = jsonDecode(response.body);
+        showErrorAlert(errorResponse['message'] ?? 'Invalid OTP code'.tr(), context);
+        return false;
+      }
+    } catch (e) {
+      showErrorAlert('Network error. Please try again'.tr(), context);
+      return false;
+    }
+  }
   RegisterClientBloc registerClientBloc =
       RegisterClientBloc(RegisterClientInitial(), AuthService());
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
@@ -103,6 +167,267 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber> {
   TextEditingController controller = TextEditingController();
   String? data;
   final RegExp maskRegExp = RegExp(r'^\d{3} \d{3} \d{3}$');
+
+  // Show confirmation dialog to verify the phone number
+  void _showPhoneConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Verify Phone Number'.tr()),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Is this phone number correct?'.tr()),
+              const SizedBox(height: 8),
+              Text(
+                phoneNUmber.toString(),
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context)
+                    .pop(); // Close the dialog and go back to edit
+              },
+              child: Text(
+                'Edit'.tr(),
+                style: const TextStyle(color: primaryColor),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop(); // Close the dialog
+                // Show OTP verification bottom sheet instead of proceeding directly
+                sendOtpToPhone(phoneNUmber.toString());
+                _showOtpVerificationBottomSheet(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+              ),
+              child: Text(
+                'Continue'.tr(),
+                style: const TextStyle(color: whiteColor),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // Show OTP verification bottom sheet
+  void _showOtpVerificationBottomSheet(BuildContext context) {
+    final otpController = TextEditingController();
+    bool isVerifyingOtp = false;
+    bool isResendingOtp = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setBottomSheetState) {
+            return Container(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom + 16.0,
+                top: 16.0,
+                left: 16.0,
+                right: 16.0,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(16.0),
+                  topRight: Radius.circular(16.0),
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2.5),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'OTP Verification'.tr(),
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'We have sent a verification code to'.tr(),
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        color: blackColor.withOpacity(0.7),
+                      ),
+                    ),
+                    Text(
+                      phoneNUmber.toString(),
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    OtpTextField(
+                      numberOfFields: 6,
+                      borderColor: Colors.grey,
+                      focusedBorderColor: primaryColor,
+                      textStyle: GoogleFonts.poppins(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      showFieldAsBox: true,
+                      borderWidth: 2.0,
+                      enabledBorderColor: Colors.grey.shade400,
+                      fieldWidth: 50,
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      onCodeChanged: (pin) {
+                        // Optional: track changes while typing
+                      },
+                      onSubmit: (pin) {
+                        otpController.text = pin;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Didn\'t receive the code?'.tr(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: blackColor.withOpacity(0.7),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: isResendingOtp ? null : () async {
+                            setBottomSheetState(() {
+                              isResendingOtp = true;
+                            });
+                            
+                            // Resend OTP functionality
+                            final phoneWithoutPrefix = phoneNUmber.toString().replaceAll(' ', '');
+                            await sendOtpToPhone(phoneWithoutPrefix);
+                            
+                            setBottomSheetState(() {
+                              isResendingOtp = false;
+                            });
+                          },
+                          child: isResendingOtp
+                            ? SizedBox(
+                                height: 12,
+                                width: 12,
+                                child: CircularProgressIndicator(
+                                  color: primaryColor,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                'Resend'.tr(),
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: primaryColor,
+                                ),
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isVerifyingOtp
+                            ? null
+                            : () async {
+                                if (otpController.text.length < 6) {
+                                  showErrorAlert(
+                                      'Please enter a valid 6-digit OTP code'.tr(),
+                                      context);
+                                  return;
+                                }
+
+                                setBottomSheetState(() {
+                                  isVerifyingOtp = true;
+                                });
+                                
+                                // Verify OTP with the API
+                                final phoneWithoutPrefix = phoneNUmber.toString().replaceAll(' ', '');
+                                final success = await verifyOtp(phoneWithoutPrefix, otpController.text);
+                                
+                                if (success) {
+                                  // Close bottom sheet after verification
+                                  Navigator.pop(context);
+                                  
+                                  // Set loading state in parent widget
+                                  setState(() {
+                                    isRegisterLoading = true;
+                                  });
+                                  
+                                  // Proceed with registration 
+                                  registerClientBloc.add(
+                                    HandleRegisterClientInformation(
+                                      phone: phoneNUmber.toString(),
+                                      deviceToken: token.toString(),
+                                      countryCode: countryCode.toString(),
+                                      // Add OTP to your event if your API/event handler supports it
+                                    ),
+                                  );
+                                } else {
+                                  setBottomSheetState(() {
+                                    isVerifyingOtp = false;
+                                  });
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primaryColor,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                        child: isVerifyingOtp
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: whiteColor,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Text(
+                                'Verify'.tr(),
+                                style: const TextStyle(
+                                  color: whiteColor,
+                                  fontSize: 16,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -382,11 +707,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber> {
                             showErrorAlert(
                                 "Please enter valid phone number", context);
                           } else {
-                            registerClientBloc.add(
-                                HandleRegisterClientInformation(
-                                    phone: phoneNUmber.toString(),
-                                    deviceToken: token.toString(),
-                                    countryCode: countryCode.toString()));
+                            _showPhoneConfirmationDialog(context);
                           }
                         },
                         isLoading: isRegisterLoading,

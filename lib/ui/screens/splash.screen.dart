@@ -5,7 +5,6 @@ import 'package:speed_ios/model/auth/register.client.model.dart';
 import 'package:speed_ios/routes/routes.provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:speed_ios/routes/routes.names.dart';
 import 'package:speed_ios/utils/colors.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -34,7 +33,7 @@ class _SplashState extends State<Splash> with SingleTickerProviderStateMixin {
     // Initialize the animation controller
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 3000),
+      duration: const Duration(milliseconds: 4500),
     );
 
     // Create the animations
@@ -119,41 +118,53 @@ class _SplashState extends State<Splash> with SingleTickerProviderStateMixin {
         child: Padding(
           padding: EdgeInsets.only(bottom: bottomPadding),
           child: Center(
-            child: Stack(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    Strings.appName.length,
-                    (index) => Opacity(
-                      opacity: 0,
-                      child: Text(
-                        Strings.appName[index],
-                        style: GoogleFonts.poppins(
-                          fontSize: 48,
-                          fontWeight: FontWeight.bold,
-                          color: orangeColor,
+                Stack(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        Strings.appName.length,
+                        (index) => Opacity(
+                          opacity: 0,
+                          child: Text(
+                            Strings.appName[index],
+                            style: GoogleFonts.poppins(
+                              fontSize: 40,
+                              fontWeight: FontWeight.bold,
+                              color: orangeColor,
+                            ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    Strings.appName.length,
-                    (index) => SlideTransition(
-                      position: _animations[index],
-                      child: Text(
-                        Strings.appName[index],
-                        style: GoogleFonts.poppins(
-                            fontSize: 60,
-                            fontWeight: FontWeight.w900,
-                            color: whiteColor),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(
+                        Strings.appName.length,
+                        (index) => SlideTransition(
+                          position: _animations[index],
+                          child: Text(
+                            Strings.appName[index],
+                            style: GoogleFonts.poppins(
+                                fontSize: 40,
+                                fontWeight: FontWeight.w900,
+                                color: whiteColor),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ),
+                Text("SPEED",
+                    style: GoogleFonts.poppins(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.amber, // Use your accent color
+                    ))
               ],
             ),
           ),

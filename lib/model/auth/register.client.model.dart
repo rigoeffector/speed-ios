@@ -1,58 +1,118 @@
-import 'package:speed_ios/model/user_model.dart';
-
 class RegisterClientModel {
-  String? message;
-  bool success = false;
-  List<ClientData>? data;
+  final String? message;
+  final bool success;
+  final List<ClientData> data; // Non-nullable: always [] if empty/null
 
-  RegisterClientModel({this.message, required this.success, this.data});
+  const RegisterClientModel({
+    required this.message,
+    required this.success,
+    required this.data,
+  });
+  factory RegisterClientModel.fromJson(Map<String, dynamic> json) {
+    return RegisterClientModel(
+      message: json['message'] as String?,
+      success: json['success'] as bool? ?? false,
+      data: _parseData(json['data']),
+    );
+  }
 
-  RegisterClientModel.fromJson(Map<String, dynamic> json) {
-    message = json['message'];
-    success = json['success'] ?? false;
-    if (json['data'] != null) {
-      data = <ClientData>[];
-      json['data'].forEach((v) {
-        data!.add(ClientData.fromJson(v));
-      });
+  static List<ClientData> _parseData(dynamic dataJson) {
+    if (dataJson == null) {
+      print('Info: data is null, defaulting to empty list');
+      return <ClientData>[];
+    }
+
+    if (dataJson is List) {
+      // Standard: List of maps
+      return dataJson
+          .where((item) => item is Map<String, dynamic>) // Filter invalid
+          .cast<Map<String, dynamic>>()
+          .map((item) => ClientData.fromJson(item))
+          .toList();
+    } else if (dataJson is Map<String, dynamic>) {
+      // Fallback: Single object → list of 1
+      print('Info: Converted single Map to List for data');
+      return <ClientData>[ClientData.fromJson(dataJson)];
+    } else {
+      // Unexpected (e.g., String "null", int)
+      print('Warning: Unexpected type for data: ${dataJson.runtimeType}. Defaulting to empty list.');
+      return <ClientData>[];
     }
   }
 
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = <String, dynamic>{};
-    data['message'] = message;
-    data['success'] = success;
-    if (this.data != null) {
-      data['data'] = this.data!.map((v) => v.toJson()).toList();
+    final Map<String, dynamic> dataMap = <String, dynamic>{};
+    dataMap['message'] = message;
+    dataMap['success'] = success;
+    if (data.isNotEmpty) { // Safe: no !
+      dataMap['data'] = data.map((v) => v.toJson()).toList();
     }
-    return data;
+    return dataMap;
   }
+
+  @override
+  String toString() => 'RegisterClientModel(success: $success, dataLength: ${data.length}, message: $message)';
 }
 
 class ClientData {
-  int? id;
-  String? fname;
-  String? lname;
-  String? phone;
-  String? status;
+  final int? id;
+  final String? fname;
+  final String? lname;
+  final String? phone;
+  final String? status;
+  final String? verificationCode;
+  final String? deviceToken; // "null" string → null
+  final String? verificationCodeExpiry; // e.g., ISO string
 
-  ClientData({this.id, this.fname, this.lname, this.phone, this.status});
+  const ClientData({
+    this.id,
+    this.fname,
+    this.lname,
+    this.phone,
+    this.status,
+    this.verificationCode,
+    this.deviceToken,
+    this.verificationCodeExpiry,
+  });
 
-  ClientData.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    fname = json['fname'];
-    lname = json['lname'];
-    phone = json['phone'];
-    status = json['status'];
+  factory ClientData.fromJson(Map<String, dynamic> json) {
+    return ClientData(
+      id: json['id'] as int?,
+      fname: _fromJsonString(json['fname']),
+      lname: _fromJsonString(json['lname']),
+      phone: _fromJsonString(json['phone']),
+      status: _fromJsonString(json['status']),
+      verificationCode: _fromJsonString(json['verificationCode']),
+      deviceToken: _fromJsonString(json['deviceToken']), // Key fix: "null" → null
+      verificationCodeExpiry: _fromJsonString(json['verificationCodeExpiry']),
+    );
   }
+
+  // Helper: Accepts null or String; converts "null" string to actual null
+  static String? _fromJsonString(dynamic value) {
+    if (value == null) return null;
+    if (value is! String) return value.toString(); // Fallback for non-string
+    return (value.toLowerCase() == 'null') ? null : value;
+  }
+
+  // Optional: Safe DateTime parser for expiry
+  DateTime? get expiryDateTime => verificationCodeExpiry != null
+      ? DateTime.tryParse(verificationCodeExpiry!)
+      : null;
 
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = <String, dynamic>{};
-    data['id'] = id;
-    data['fname'] = fname;
-    data['lname'] = lname;
-    data['phone'] = phone;
-    data['status'] = status;
-    return data;
+    final Map<String, dynamic> dataMap = <String, dynamic>{};
+    dataMap['id'] = id;
+    dataMap['fname'] = fname;
+    dataMap['lname'] = lname;
+    dataMap['phone'] = phone;
+    dataMap['status'] = status;
+    dataMap['verificationCode'] = verificationCode;
+    dataMap['deviceToken'] = deviceToken ?? 'null'; // Serialize null as "null" if needed by API
+    dataMap['verificationCodeExpiry'] = verificationCodeExpiry;
+    return dataMap;
   }
+
+  @override
+  String toString() => 'ClientData(id: $id, phone: $phone, deviceToken: $deviceToken, expiry: $verificationCodeExpiry)';
 }

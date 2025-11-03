@@ -1,208 +1,391 @@
-import 'package:speed_ios/routes/routes.provider.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:speed_ios/api/cancel.service.dart';
-import 'package:speed_ios/api/firebase.notification.service.dart';
-import 'package:speed_ios/model/cancle.reason.model.dart';
-import 'package:speed_ios/routes/routes.names.dart';
-import 'package:speed_ios/states/cancel.request/cancel_request_bloc.dart';
-import 'package:speed_ios/ui/widgets/buttons/button.dart';
-import 'package:speed_ios/ui/widgets/lists/item_cancel_row.dart';
-import 'package:speed_ios/utils/colors.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
-import '../../../../states/register.client/register_client_bloc.dart';
-import '../../../../utils/notifiers.dart';
+class CancellationReason {
+  final String title;
+  final String description;
+  final String kinyaDescription;
+  final IconData icon;
 
-class CancelRequestScreen extends StatefulWidget {
-  String? tripId;
-  String? clientId;
-  String? driverId;
-  String? sourceLoc;
-  String? destinationLoc;
-  CancelRequestScreen(
-      {super.key,
-      this.tripId,
-      this.clientId,
-      this.driverId,
-      this.sourceLoc,
-      this.destinationLoc});
-
-  @override
-  State<CancelRequestScreen> createState() => _CancelRequestScreenState();
+  CancellationReason({
+    required this.title,
+    required this.description,
+    required this.kinyaDescription,
+    required this.icon,
+  });
 }
 
-class _CancelRequestScreenState extends State<CancelRequestScreen> {
-  CancelRequestBloc cancelRequestBloc =
-      CancelRequestBloc(CancelRequestInitial(), CancelService());
+class CancelRequestBottomSheet extends StatefulWidget {
+  final Function(String reason) onConfirmCancel;
 
-  bool isCancelLoading = false;
-
-  // FirebaseApi firebaseService = FirebaseApi();
-  // final _firestore = FirebaseFirestore.instance;
+  const CancelRequestBottomSheet({
+    Key? key,
+    required this.onConfirmCancel,
+  }) : super(key: key);
 
   @override
-  void initState() {
-    super.initState();
-    cancelReasonModel = CancelReasonModel();
-    cancelRequestBloc = BlocProvider.of<CancelRequestBloc>(context);
-  }
+  State<CancelRequestBottomSheet> createState() =>
+      _CancelRequestBottomSheetState();
+}
 
-  // void sendDriverNotification(String driverId, String title, String msg) async {
-  //   DocumentSnapshot snap =
-  //       await _firestore.collection("driverTokens").doc(driverId).get();
-  //   String token = snap['token'];
+class _CancelRequestBottomSheetState extends State<CancelRequestBottomSheet> {
+  String? selectedReason;
+  final TextEditingController _customReasonController = TextEditingController();
 
-  //   firebaseService.sendPushNotification(
-  //       title.toString(), msg.toString(), token);
-  // }
-
-  String? reasonDesc, selectedId;
-  late CancelReasonModel cancelReasonModel;
-
-  List<CancelReasonModel> reasons = [
-    CancelReasonModel(id: "1", reason: "Changed plans, no longer need a ride."),
-    CancelReasonModel(id: "2", reason: "Found alternative transportation."),
-    CancelReasonModel(id: "3", reason: "Emergency came up, can't make it."),
-    CancelReasonModel(id: "4", reason: "Driver ETA too long."),
-    CancelReasonModel(
-        id: "5", reason: "Going with a different ride-sharing service."),
-    CancelReasonModel(id: "6", reason: "Uncomfortable with the vehicle type."),
-    CancelReasonModel(id: "7", reason: "Decided to drive myself"),
-    CancelReasonModel(id: "8", reason: "Changed destination, need to cancel.")
+  final List<CancellationReason> cancellationReasons = [
+    CancellationReason(
+      title: "Changed my mind",
+      description: "I no longer need this service",
+      kinyaDescription: "Nahinduye ibitekerezo",
+      icon: Icons.psychology_outlined,
+    ),
+    CancellationReason(
+      title: "Found alternative transport",
+      description: "Got another ride or delivery option",
+      kinyaDescription: "Nabonye indi modoka",
+      icon: Icons.directions_car_outlined,
+    ),
+    CancellationReason(
+      title: "Driver is taking too long",
+      description: "Waiting time is too long",
+      kinyaDescription: "Umushoferi atinze cyane kuza",
+      icon: Icons.access_time_outlined,
+    ),
+    CancellationReason(
+      title: "Wrong pickup location",
+      description: "I entered the wrong address",
+      kinyaDescription: "Nashyizemo ikerecyezo uri bumfatireho kitari cyo",
+      icon: Icons.wrong_location_outlined,
+    ),
+    CancellationReason(
+      title: "Price concerns",
+      description: "The fare is too expensive",
+      kinyaDescription: "Igiciro kiri hejuru cyane",
+      icon: Icons.money_off_outlined,
+    ),
+    CancellationReason(
+      title: "Emergency situation",
+      description: "Unexpected urgent matter came up",
+      kinyaDescription: "Habaye ikibazo cyihutirwa",
+      icon: Icons.emergency_outlined,
+    ),
+    CancellationReason(
+      title: "Driver not responding",
+      description: "Cannot reach the driver",
+      kinyaDescription: "Umushoferi ntiyasubije",
+      icon: Icons.phone_disabled_outlined,
+    ),
+    CancellationReason(
+      title: "Other reason",
+      description: "Specify your own reason",
+      kinyaDescription: "Andika indi mpamvu yawe",
+      icon: Icons.edit_note_outlined,
+    ),
   ];
 
-  // cancelRideRequested(String status) {
-  //   CollectionReference collection = _firestore.collection('rideRequests');
-  //   DocumentReference document = collection.doc(widget.clientId.toString());
-
-  //   Map<String, Object> updatedLocationMap = {'status': status};
-
-  //   document.update(updatedLocationMap);
-
-  //   sendDriverNotification(
-  //       widget.driverId.toString(),
-  //       "Cancelled Client Request ",
-  //       "Dear Driver, Your client request has been cancelled reasos: $reasonDesc , \nPick up location ${widget.sourceLoc.toString()} to ${widget.destinationLoc.toString()}");
-
-  //   context
-  //       .goNamed(home, queryParameters: {'userId': widget.clientId.toString()});
-  // }
+  @override
+  void dispose() {
+    _customReasonController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: whiteColor,
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        elevation: 0,
-        leading: IconButton(
-            onPressed: () {
-              context.safeGoNamed(home,
-                  params: {'userId': widget.clientId.toString()});
-            },
-            icon: const Icon(Icons.arrow_back)),
-        title: Text("Ride Request  Cancelation",
-            style: GoogleFonts.poppins(
-                fontSize: 16, color: whiteColor, fontWeight: FontWeight.w400)),
-      ),
-      body: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            headingInfo(),
-            cancelQuestionInfo(),
-            BlocConsumer<CancelRequestBloc, CancelRequestState>(
-              listener: (context, state) {
-                if (state is CancelRequestError) {
-                  showErrorAlert(state.message, context);
-                  setState(() {
-                    isCancelLoading = false;
-                  });
-                }
-                if (state is CancelRequestLoading) {
-                  setState(() {
-                    isCancelLoading = true;
-                  });
-                }
-                if (state is CancelRequestSuccess) {
-                  setState(() {
-                    isCancelLoading = false;
-                  });
-                  //sending request driver notification
+    final primaryColor = Theme.of(context).primaryColor;
 
-                  // cancelRideRequested("2");
-                }
-              },
-              builder: (context, state) {
-                return MyButton(
-                  title: "CANCEL RIDE REQUEST",
-                  backgroundColor: primaryColor,
-                  onTap: () {
-                    cancelRequestBloc.add(HandleCancelRequestInformation(
-                        requestId: widget.tripId.toString(),
-                        feedback: "feedback"));
-                  },
-                  isLoading: isCancelLoading,
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey[300],
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.cancel_outlined,
+                    color: Colors.red,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Cancel Request',
+                        style: GoogleFonts.poppins(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      Text(
+                        'Please select a reason',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.2, end: 0),
+
+          const Divider(height: 24),
+
+          // Reasons list
+          Flexible(
+            child: ListView.builder(
+              shrinkWrap: true,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: cancellationReasons.length,
+              itemBuilder: (context, index) {
+                final reason = cancellationReasons[index];
+                final isSelected = selectedReason == reason.title;
+                final isOther = reason.title == "Other reason";
+
+                return Column(
+                  children: [
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          selectedReason = reason.kinyaDescription;
+                          if (!isOther) {
+                            _customReasonController.clear();
+                          }
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? primaryColor.withOpacity(0.08)
+                              : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color:
+                                isSelected ? primaryColor : Colors.grey[200]!,
+                            width: isSelected ? 2 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? primaryColor.withOpacity(0.15)
+                                    : Colors.white,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Icon(
+                                reason.icon,
+                                color: isSelected
+                                    ? primaryColor
+                                    : Colors.grey[600],
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    reason.title,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                      color: isSelected
+                                          ? primaryColor
+                                          : Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    reason.description,
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 12,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Radio<String>(
+                              value: reason.title,
+                              groupValue: selectedReason,
+                              onChanged: (value) {
+                                setState(() {
+                                  selectedReason = value;
+                                  if (!isOther) {
+                                    _customReasonController.clear();
+                                  }
+                                });
+                              },
+                              activeColor: primaryColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                        .animate()
+                        .fadeIn(duration: 300.ms, delay: (50 * index).ms)
+                        .slideX(begin: 0.2, end: 0, delay: (50 * index).ms),
+
+                    // Custom reason text field
+                    if (isOther && isSelected)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TextField(
+                          controller: _customReasonController,
+                          maxLines: 3,
+                          maxLength: 200,
+                          decoration: InputDecoration(
+                            hintText: 'Enter your reason here...',
+                            hintStyle: GoogleFonts.poppins(
+                              fontSize: 13,
+                              color: Colors.grey[400],
+                            ),
+                            filled: true,
+                            fillColor: Colors.grey[50],
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(color: Colors.grey[300]!),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: primaryColor,
+                                width: 2,
+                              ),
+                            ),
+                            contentPadding: const EdgeInsets.all(16),
+                          ),
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            color: Colors.black87,
+                          ),
+                        ),
+                      )
+                          .animate()
+                          .fadeIn(duration: 300.ms)
+                          .slideY(begin: -0.2, end: 0),
+                  ],
                 );
               },
-            )
-          ],
-        ),
+            ),
+          ),
+
+          // Action buttons
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      side: BorderSide(color: Colors.grey[300]!),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Text(
+                      'Go Back',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: selectedReason == null
+                        ? null
+                        : () {
+                            String finalReason = selectedReason!;
+                            if (selectedReason == "Other reason" &&
+                                _customReasonController.text.isNotEmpty) {
+                              finalReason = _customReasonController.text;
+                            }
+                            Navigator.pop(context);
+                            widget.onConfirmCancel(finalReason);
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: selectedReason == null
+                          ? Colors.grey[300]
+                          : Colors.red,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                      disabledBackgroundColor: Colors.grey[300],
+                    ),
+                    child: Text(
+                      'Confirm Cancel',
+                      style: GoogleFonts.poppins(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          )
+              .animate()
+              .fadeIn(duration: 300.ms, delay: 200.ms)
+              .slideY(begin: 0.2, end: 0),
+          const SizedBox(height: 50),
+        ],
       ),
     );
   }
-
-  Widget headingInfo() => Container(
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: primaryColorOverlay),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 13),
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 15),
-        width: MediaQuery.of(context).size.width,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text("Why are you cancel your ride request",
-                style: GoogleFonts.poppins(
-                    fontSize: 15,
-                    color: primaryColor,
-                    fontWeight: FontWeight.w600)),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10.0),
-            child: Text(
-                "We're  to see you cancel your ride , To help us improve, we have a few short questions for you before you leave.",
-                style: GoogleFonts.poppins(
-                    fontSize: 12, fontWeight: FontWeight.w400)),
-          ),
-        ]),
-      );
-
-  Widget cancelQuestionInfo() => Container(
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10), color: transparentColor),
-        padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 10),
-        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-        width: MediaQuery.of(context).size.width,
-        child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(reasons.length, (index) {
-              CancelReasonModel item = reasons[index];
-              return CancelItemRow(
-                id: item.id.toString(),
-                selectedId: selectedId.toString(),
-                title: item.reason.toString(),
-                onTap: () {
-                  setState(() {
-                    reasonDesc = item.reason.toString();
-                    selectedId = item.id.toString();
-                  });
-                },
-              );
-            })),
-      );
 }

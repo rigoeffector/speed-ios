@@ -16,6 +16,7 @@ import 'package:speed_ios/model/user.login.model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/update.profile.model.dart';
+import '../model/verify.otp.model.dart';
 
 class AuthService {
   Future<RegisterClientModel> postRegisterClientInfo(
@@ -24,7 +25,7 @@ class AuthService {
     SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
 
     var response = await http.post(
-        Uri.parse('${dotenv.get('mainUrl')}/clients'),
+        Uri.parse('${dotenv.get('mainUrl')}/clients/create'),
         headers: headers,
         body: json.encode({
           'phone': clientPhone.toString(),
@@ -147,23 +148,23 @@ class AuthService {
           UpdateClientInfoModel.fromJson(results);
 
       sharedPreferences.setString(
-          'currentUser', jsonEncode(updateClientInfoModel.data!.first));
+          'currentUser', jsonEncode(updateClientInfoModel.data!));
 
       sharedPreferences.setString(
-          'currentUserProfile', jsonEncode(updateClientInfoModel.data!.first));
+          'currentUserProfile', jsonEncode(updateClientInfoModel.data!));
 
       return updateClientInfoModel;
     } else if (response.statusCode == 400) {
       UpdateClientInfoModel updateClientInfoModel =
           UpdateClientInfoModel.fromJson(results);
       sharedPreferences.setString(
-          'currentUser', jsonEncode(updateClientInfoModel.data!.first));
+          'currentUser', jsonEncode(updateClientInfoModel.data!));
       return updateClientInfoModel;
     } else {
       UpdateClientInfoModel updateClientInfoModel =
           UpdateClientInfoModel.fromJson(results);
       sharedPreferences.setString(
-          'currentUser', jsonEncode(updateClientInfoModel.data!.first));
+          'currentUser', jsonEncode(updateClientInfoModel.data!));
       return updateClientInfoModel;
     }
   }
@@ -282,4 +283,124 @@ class AuthService {
       return updateSentRequestModel;
     }
   }
+
+  // Verify OTP
+  Future<VerifyOtpModel> postVerifyOtp(String phone, String otp) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${dotenv.get('mainUrl')}/clients/verify-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+          'otp': otp,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final jsonResponse = jsonDecode(response.body);
+        return VerifyOtpModel.fromJson(jsonResponse);
+      } else {
+        final errorResponse = jsonDecode(response.body);
+        return VerifyOtpModel(
+          success: false,
+          message: errorResponse['message'] ?? 'Verification failed',
+        );
+      }
+    } catch (e) {
+      return VerifyOtpModel(
+        success: false,
+        message: 'Network error: ${e.toString()}',
+      );
+    }
+  }
+
+  // Resend OTP
+  Future<VerifyOtpModel> postResendOtp(String phone) async {
+    try {
+      final response = await http.post(
+        Uri.parse(
+            '${dotenv.get('mainUrl')}/clients/resend-otp'), // Adjust endpoint as needed
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final jsonResponse = jsonDecode(response.body);
+        return VerifyOtpModel(
+          success: true,
+          message: jsonResponse['message'] ?? 'OTP sent successfully',
+        );
+      } else {
+        final errorResponse = jsonDecode(response.body);
+        return VerifyOtpModel(
+          success: false,
+          message: errorResponse['message'] ?? 'Failed to resend OTP',
+        );
+      }
+    } catch (e) {
+      return VerifyOtpModel(
+        success: false,
+        message: 'Network error: ${e.toString()}',
+      );
+    }
+  }
+
+
+  Future<MyRequestsModel> cancelSentRequestStatus(
+      String requestId, String status, String? cancellationReason) async {
+    Map<String, String> headers = {'Content-Type': 'application/json'};
+
+    // Build query parameters
+    Map<String, String> queryParams = {
+      'cancelledBy': 'CLIENT',
+    };
+
+    // Add cancellation reason if provided
+    if (cancellationReason != null && cancellationReason.isNotEmpty) {
+      queryParams['cancellationReason'] = cancellationReason;
+    }
+
+    // Build URI with query parameters
+    Uri uri = Uri.parse('${dotenv.get('mainUrl')}/requests/$requestId/cancel')
+        .replace(queryParameters: queryParams);
+
+    // Log request details
+    print('=== REQUEST ===');
+    print('Method: PATCH');
+    print('URL: $uri');
+    print('Headers: $headers');
+    print('Query Params: $queryParams');
+    print('===============\n');
+
+    var response = await http.patch(
+      uri,
+      headers: headers,
+    );
+
+    // Log response details
+    print('=== RESPONSE ===');
+    print('Status Code: ${response.statusCode}');
+    print('Headers: ${response.headers}');
+    print('Body: ${response.body}');
+    print('================\n');
+
+    Map<String, dynamic> results = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      MyRequestsModel updateSentRequestModel =
+          MyRequestsModel.fromJson(results);
+      return updateSentRequestModel;
+    } else if (response.statusCode == 400) {
+      MyRequestsModel updateSentRequestModel =
+          MyRequestsModel.fromJson(results);
+      return updateSentRequestModel;
+    } else {
+      MyRequestsModel updateSentRequestModel =
+          MyRequestsModel.fromJson(results);
+      return updateSentRequestModel;
+    }
+  }
+
 }

@@ -7,15 +7,13 @@ import 'package:speed_ios/states/requests/create_request_bloc.dart';
 import 'package:speed_ios/states/requests/fetch/received_sent_requests_bloc.dart';
 import 'package:speed_ios/states/requests/update/update_sent_request_status_bloc.dart';
 import 'package:speed_ios/states/update.profile/update_profile_bloc.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:speed_ios/states/verify/verify_otp_bloc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:speed_ios/api/auth.service.dart';
 import 'package:speed_ios/api/cancel.service.dart';
-import 'package:speed_ios/api/firebase.notification.service.dart';
 import 'package:speed_ios/api/location.service.dart';
 import 'package:speed_ios/routes/routes.provider.dart';
 import 'package:speed_ios/states/available.driver.location/available_driver_location_bloc.dart';
@@ -33,34 +31,21 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
-import 'app.update.dart';
 import 'controllers/language_controller.dart';
 import 'package:in_app_update/in_app_update.dart';
 
 Future<void> main() async {
+  if (kReleaseMode) {
+    await dotenv.load(fileName: '.env');
+  }
+  if (kDebugMode) {
+    await dotenv.load(fileName: '.env');
+  }
+  if (kProfileMode) {
+    await dotenv.load(fileName: '.env');
+  }
   WidgetsFlutterBinding.ensureInitialized();
-
-// Ensure Firebase is initialized before other services
-  // try {
-  //   await Firebase.initializeApp();
-  //   print("Firebase initialized successfully");
-  // } catch (e) {
-  //   print("Error initializing Firebase: $e");
-  //   // Optionally handle initialization failure
-  //   return;
-  // }
-  // Initialize core services
-  await Future.wait([
-    dotenv
-        .load(fileName: '.env')
-        .onError((e, _) => print('Error loading .env file: $e')),
-    // FirebaseApi().initNotifications().then((_) => print("Firebase notifications initialized"))
-    //   .onError((e, _) => print("Error initializing notifications: $e")),
-    EasyLocalization.ensureInitialized()
-        .onError((e, _) => print("Error initializing EasyLocalization: $e"))
-  ]);
-
-  // Configure app settings
+  await EasyLocalization.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   final prefs = await SharedPreferences.getInstance();
@@ -68,19 +53,17 @@ Future<void> main() async {
 
   HttpOverrides.global = MyHttpOverrides();
 
-  // Run the app
   runApp(MultiProvider(
-    providers: [
-      ChangeNotifierProvider(create: (_) => LanguageController()),
-    ],
-    child: EasyLocalization(
-      supportedLocales: const [Locale('en', 'US'), Locale('fr', 'FR')],
-      path: 'assets/translations',
-      fallbackLocale: const Locale('en', 'US'),
-      useFallbackTranslations: true,
-      child: Phoenix(child: MyApp(showHome: showHome)),
-    ),
-  ));
+      providers: [
+        ChangeNotifierProvider(create: (_) => LanguageController()),
+      ],
+      child: EasyLocalization(
+          supportedLocales: const [Locale('en', 'US'), Locale('fr', 'FR')],
+          path:
+              'assets/translations', // <-- change the path of the translation files
+          fallbackLocale: const Locale('en', 'US'),
+          useFallbackTranslations: true,
+          child: Phoenix(child: MyApp(showHome: showHome)))));
 }
 
 class MyApp extends StatefulWidget {
@@ -136,15 +119,6 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
-  void _showUpdatePage() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => UpdateRequiredPage(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
@@ -193,7 +167,9 @@ class _MyAppState extends State<MyApp> {
                 CreateRequestBloc(CreateRequestInitial(), AuthService())),
         BlocProvider<ReceivedSentRequestsBloc>(
             create: (_) => ReceivedSentRequestsBloc(
-                ReceivedSentRequestsInitial(), RequestsRepository()))
+                ReceivedSentRequestsInitial(), RequestsRepository())),
+        BlocProvider<VerifyOtpBloc>(
+            create: (_) => VerifyOtpBloc(VerifyOtpInitial(), AuthService()))
       ],
       child: MaterialApp.router(
         routerConfig: AppNavigation.router,

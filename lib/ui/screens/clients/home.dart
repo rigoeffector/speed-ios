@@ -9,7 +9,6 @@ import 'package:speed_ios/routes/routes.provider.dart';
 import 'package:speed_ios/states/requests/create_request_bloc.dart';
 import 'package:speed_ios/utils/colors.dart';
 import 'package:speed_ios/utils/notifiers.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +24,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_webservice/places.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../api/auth.service.dart';
 import '../../../api/location.service.dart';
 import '../../../connectivity/check.connectivity.dart';
@@ -44,7 +44,7 @@ class Home extends StatefulWidget {
   State<Home> createState() => _HomeState();
 }
 
-class _HomeState extends State<Home> {
+class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   ClientProfileBloc profileBloc =
       ClientProfileBloc(ClientProfileInitial(), AuthService());
   CreateRequestBloc createRequestBloc =
@@ -53,16 +53,17 @@ class _HomeState extends State<Home> {
       AvailableDriverLocationBloc(
           AvailableDriverLocationInitial(), LocationService());
   NetworkUtils networkUtils = NetworkUtils();
+  late AnimationController _refreshController;
+
   String? userFullNames;
   String? userPhone;
   int? userId;
-  String selectedService =
-      ''; // Store the selected service type (Ride or Courier)
+  String selectedService = '';
   TextEditingController currentLocationController = TextEditingController();
   TextEditingController destinationController = TextEditingController();
   TextEditingController descriptionController = TextEditingController();
   int requestStep = 1;
-  String? _currentAddress; // For storing the current address
+  String? _currentAddress;
   late AvailableDriverData motorbikerData;
 
   getCurrentUserInfo() async {
@@ -81,13 +82,23 @@ class _HomeState extends State<Home> {
   void initState() {
     getCurrentUserInfo();
     super.initState();
+    _refreshController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    );
     createRequestBloc = BlocProvider.of<CreateRequestBloc>(context);
     motorbikerData = AvailableDriverData();
     profileBloc = BlocProvider.of<ClientProfileBloc>(context);
     _availableDriverLocationBloc =
         BlocProvider.of<AvailableDriverLocationBloc>(context);
-    _getCurrentLocation(); // Get current location on startup
+    _getCurrentLocation();
     loadCountryCode();
+  }
+
+  @override
+  void dispose() {
+    _refreshController.dispose();
+    super.dispose();
   }
 
   checkIfNetworkIsAvailable() {
@@ -98,63 +109,70 @@ class _HomeState extends State<Home> {
   didChangeDependencies() {
     super.didChangeDependencies();
     _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
-
     profileBloc.add(FetchAllClientInformation(clientId: userId.toString()));
     checkIfNetworkIsAvailable();
   }
 
-  // Function to get the current location using the geolocator plugin
+  void _handleRefresh() {
+    _refreshController.forward(from: 0);
+    _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+  }
+
   Future<void> _getCurrentLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
 
-    // Check if location services are enabled
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      // Location services are not enabled
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Location services are disabled.")),
+        SnackBar(
+          content: const Text("Location services are disabled."),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       );
       return;
     }
 
-    // Check location permissions
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        // Permissions are denied
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Location permissions are denied.")),
+          SnackBar(
+            content: const Text("Location permissions are denied."),
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      // Permissions are denied forever
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text("Location permissions are permanently denied.")),
+        SnackBar(
+          content: const Text("Location permissions are permanently denied."),
+          behavior: SnackBarBehavior.floating,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       );
       return;
     }
 
-    // Get the current position
     Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high);
-
-    // Convert position to human-readable address
     locatePosition(position);
   }
 
-  // Function to convert latitude and longitude into address
   void locatePosition(Position currentPosition) async {
     Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high);
     currentPosition = position;
 
-    // Reverse geocoding to get address
     try {
       List<Placemark> placemarks =
           await placemarkFromCoordinates(position.latitude, position.longitude);
@@ -163,7 +181,6 @@ class _HomeState extends State<Home> {
       print("/////////////////////// place //////////////////");
       print(place);
       _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
-      // street, city, state, postal_code, country
       setState(() {
         _currentAddress =
             "${place.street}, ${place.subLocality}, ${place.locality}, ${place.country}";
@@ -177,8 +194,6 @@ class _HomeState extends State<Home> {
     }
   }
 
-  // Dummy list of motorbikers for demonstration
-
   String distanceOriginDestination = "";
   String distancePrice = "0.0";
   String selectedUnitPrice = "1000";
@@ -191,21 +206,20 @@ class _HomeState extends State<Home> {
       print("DISTANCEMETERS: $distanceKm");
     }
     var totPrice = distanceKm * int.parse(selectedUnitPrice.toString());
-    // var totPrice = distanceKm;
     setState(() {
       distanceOriginDestination = distanceKm.toStringAsFixed(1);
       distancePrice = totPrice.toStringAsFixed(1);
     });
 
     if (kDebugMode) {
-      print("DISTANCE $distanceOriginDestination"); //d
+      print("DISTANCE $distanceOriginDestination");
       print("DISTPRICE $distancePrice");
-    } //d
+    }
   }
 
-  LatLng currentPosition = const LatLng(0, 0); // default position
-  LatLng destinationPosition = const LatLng(0, 0); // selected place
-  LatLng originPosition = const LatLng(0, 0); // selected place
+  LatLng currentPosition = const LatLng(0, 0);
+  LatLng destinationPosition = const LatLng(0, 0);
+  LatLng originPosition = const LatLng(0, 0);
 
   String locationSelected = "";
   double dLat = 0.0, dLng = 0.0;
@@ -229,129 +243,199 @@ class _HomeState extends State<Home> {
   }
 
   void onSearchCity(BuildContext context) async {
-    var place = await PlacesAutocomplete.show(
-      offset: 0,
-      radius: 2000,
-      strictbounds: false,
-      region: "$countryCode", // Update with your country code
-      context: context,
-      mode: Mode.overlay,
-      apiKey: dotenv.get('apiKey'),
-      types: [],
-      decoration: InputDecoration(
-        hintText: "Search your destination",
-        counterText: '',
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        border: InputBorder.none,
-        hintStyle:
-            GoogleFonts.poppins(fontSize: 11.0, fontWeight: FontWeight.w300),
-      ),
-      components: [
-        Component(
-            Component.country, '$countryCode'), // Update with your country code
-      ],
-      hint: "Search Address",
-      onError: (e) {
-        print("ERRORS ${e.errorMessage}");
-      },
-    );
-
-    if (place != null) {
-      final plist = GoogleMapsPlaces(
+    try {
+      var place = await PlacesAutocomplete.show(
+        offset: 0,
+        radius: 2000,
+        strictbounds: false,
+        region: "$countryCode",
+        context: context,
+        mode: Mode.overlay,
         apiKey: dotenv.get('apiKey'),
-        apiHeaders: await const GoogleApiHeaders().getHeaders(),
+        types: [],
+        decoration: InputDecoration(
+          hintText: "Search your destination",
+          counterText: '',
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          border: InputBorder.none,
+          hintStyle:
+              GoogleFonts.poppins(fontSize: 11.0, fontWeight: FontWeight.w300),
+        ),
+        components: [
+          Component(Component.country, '$countryCode'),
+        ],
+        hint: "Search Address",
+        onError: (e) {
+          print("ERRORS ${e.errorMessage}");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Search error: ${e.errorMessage}"),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        },
       );
-      String placeid = place.placeId ?? "0";
-      final detail = await plist.getDetailsByPlaceId(placeid);
-      final geometry = detail.result.geometry!;
-      final lat = geometry.location.lat;
-      final lng = geometry.location.lng;
 
-      setState(() {
-        dLat = lat;
-        dLng = lng;
-        destinationPosition = LatLng(dLat, dLng);
-        locationSelected = place.description.toString();
-      });
+      if (place != null) {
+        try {
+          final plist = GoogleMapsPlaces(
+            apiKey: dotenv.get('apiKey'),
+            apiHeaders: await const GoogleApiHeaders().getHeaders(),
+          );
+          String placeid = place.placeId ?? "0";
+          final detail = await plist.getDetailsByPlaceId(placeid);
+          final geometry = detail.result.geometry!;
+          final lat = geometry.location.lat;
+          final lng = geometry.location.lng;
 
-      LatLng dLatLng = LatLng(dLat, dLng);
-      LatLng sLatLng = LatLng(sLat, sLng);
-      print("Selected Location: $locationSelected");
+          setState(() {
+            dLat = lat;
+            dLng = lng;
+            destinationPosition = LatLng(dLat, dLng);
+            locationSelected = place.description.toString();
+          });
 
-      setState(() {
-        calculateDistanceBtw(dLatLng, sLatLng);
-        Navigator.pop(context, true);
-        Future.delayed(const Duration(seconds: 1));
+          LatLng dLatLng = LatLng(dLat, dLng);
+          LatLng sLatLng = LatLng(sLat, sLng);
+          print("Selected Location: $locationSelected");
 
-        _showRequestBottomSheet(context, motorbikerData);
-      });
+          setState(() {
+            calculateDistanceBtw(dLatLng, sLatLng);
+            Navigator.pop(context, true);
+            Future.delayed(const Duration(seconds: 1));
+            _showRequestBottomSheet(context, motorbikerData);
+          });
+        } catch (e) {
+          print("Error getting place details: $e");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                  "Failed to get location details. Please try again."),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print("Error in search: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+              "Search failed. Please check your connection and try again."),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
     }
   }
 
   void onSearchOriginCity(BuildContext context) async {
-    var place = await PlacesAutocomplete.show(
-      offset: 0,
-      radius: 2000,
-      strictbounds: false,
-      region: "$countryCode", // Update with your country code
-      context: context,
-      mode: Mode.overlay,
-      apiKey: dotenv.get('apiKey'),
-      types: [],
-      decoration: InputDecoration(
-        hintText: "Search your origin",
-        counterText: '',
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        border: InputBorder.none,
-        hintStyle:
-            GoogleFonts.poppins(fontSize: 11.0, fontWeight: FontWeight.w300),
-      ),
-      components: [
-        Component(
-            Component.country, '$countryCode'), // Update with your country code
-      ],
-      hint: "Search Address",
-      onError: (e) {
-        print("ERRORS ${e.errorMessage}");
-      },
-    );
-
-    if (place != null) {
-      final plist = GoogleMapsPlaces(
+    try {
+      var place = await PlacesAutocomplete.show(
+        offset: 0,
+        radius: 2000,
+        strictbounds: false,
+        region: "$countryCode",
+        context: context,
+        mode: Mode.overlay,
         apiKey: dotenv.get('apiKey'),
-        apiHeaders: await const GoogleApiHeaders().getHeaders(),
+        types: [],
+        decoration: InputDecoration(
+          hintText: "Search your origin",
+          counterText: '',
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          border: InputBorder.none,
+          hintStyle:
+              GoogleFonts.poppins(fontSize: 11.0, fontWeight: FontWeight.w300),
+        ),
+        components: [
+          Component(Component.country, '$countryCode'),
+        ],
+        hint: "Search Address",
+        onError: (e) {
+          print("ERRORS ${e.errorMessage}");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Search error: ${e.errorMessage}"),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        },
       );
-      String placeid = place.placeId ?? "0";
-      final detail = await plist.getDetailsByPlaceId(placeid);
-      final geometry = detail.result.geometry!;
-      final lat = geometry.location.lat;
-      final lng = geometry.location.lng;
 
-      setState(() {
-        sLat = lat;
-        sLng = lng;
-        originPosition =
-            LatLng(sLat, sLng); // destinationPosition = LatLng(dLat, dLng);
+      if (place != null) {
+        try {
+          final plist = GoogleMapsPlaces(
+            apiKey: dotenv.get('apiKey'),
+            apiHeaders: await const GoogleApiHeaders().getHeaders(),
+          );
+          String placeid = place.placeId ?? "0";
+          final detail = await plist.getDetailsByPlaceId(placeid);
+          final geometry = detail.result.geometry!;
+          final lat = geometry.location.lat;
+          final lng = geometry.location.lng;
 
-        _currentAddress = place.description.toString();
-      });
+          setState(() {
+            sLat = lat;
+            sLng = lng;
+            originPosition = LatLng(sLat, sLng);
+            _currentAddress = place.description.toString();
+          });
 
-      LatLng dLatLng = LatLng(dLat, dLng);
-      LatLng sLatLng = LatLng(sLat, sLng);
-      print("Selected Origin Location: $_currentAddress");
+          LatLng dLatLng = LatLng(dLat, dLng);
+          LatLng sLatLng = LatLng(sLat, sLng);
+          print("Selected Origin Location: $_currentAddress");
 
-      setState(() {
-        calculateDistanceBtw(dLatLng, sLatLng);
-        Navigator.pop(context, true);
-        Future.delayed(const Duration(seconds: 1));
-
-        _showRequestBottomSheet(context, motorbikerData);
-      });
+          setState(() {
+            calculateDistanceBtw(dLatLng, sLatLng);
+            Navigator.pop(context, true);
+            Future.delayed(const Duration(seconds: 1));
+            _showRequestBottomSheet(context, motorbikerData);
+          });
+        } catch (e) {
+          print("Error getting place details: $e");
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                  "Failed to get location details. Please try again."),
+              behavior: SnackBarBehavior.floating,
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print("Error in search: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+              "Search failed. Please check your connection and try again."),
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: Colors.red,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
     }
   }
 
   double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const R = 6371; // Radius of the Earth in kilometers
+    const R = 6371;
     final dLat = _degreesToRadians(lat2 - lat1);
     final dLon = _degreesToRadians(lon2 - lon1);
     final a = sin(dLat / 2) * sin(dLat / 2) +
@@ -360,285 +444,445 @@ class _HomeState extends State<Home> {
             sin(dLon / 2) *
             sin(dLon / 2);
     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    return R * c; // Distance in kilometers
+    return R * c;
   }
 
   double _degreesToRadians(double degrees) {
     return degrees * pi / 180;
   }
 
-  double distanceThreshold = 500.0; // 5 kilometers range
+  double distanceThreshold = 500.0;
 
-  // Function to show bottom sheet with motorbikers list
   void _showMotorbikersBottomSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (BuildContext context) {
-        return Container(
-          padding: const EdgeInsets.all(16.0),
-          decoration: const BoxDecoration(
-              color: whiteColor,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-          height: MediaQuery.of(context).size.height,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(left: 16.0),
-                child: Text(
-                  'Select Nearby $selectedService Service',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.poppins(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: primaryColor),
-                ),
+        return DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (BuildContext context, ScrollController scrollController) {
+            return Container(
+              decoration: BoxDecoration(
+                color: whiteColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(30)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-              BlocConsumer<AvailableDriverLocationBloc,
-                  AvailableDriverLocationState>(
-                listener: (context, state) {
-                  // TODO: implement listener
-                },
-                builder: (context, state) {
-                  if (state is AvailableDriverLocationLoading) {
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 70.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Center(
-                            child: Column(
-                              children: [
-                                const SizedBox(height: 20),
-                                Text(
-                                  'Loading nearby $selectedService Service',
-                                  style: GoogleFonts.poppins(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w400,
-                                      color: Colors.black),
-                                ),
-                                const SizedBox(height: 20),
-                                const SpinKitDoubleBounce(
-                                  color: primaryColor,
-                                  size: 40,
-                                ),
-                              ],
-                            ),
+              child: Column(
+                children: [
+                  // Drag handle
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  // Header
+                  Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: primaryColor.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  if (state is AvailableDriverLocationSuccess) {
-                    List<AvailableDriverData> nearbyDrivers =
-                        state.availableDriverOnMapModel.data!.where((driver) {
-                      if (driver.latitude != null && driver.longitude != null) {
-                        double distance = calculateDistance(
-                            sLat, sLng, driver.latitude!, driver.longitude!);
-                        // Check if the requestedTime is close to now
-                        return distance <= distanceThreshold;
-                      }
-                      return false;
-                    }).toList();
-
-                    if (nearbyDrivers.isEmpty) {
-                      return Center(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 70.0),
+                          child: Icon(
+                            _getServiceIcon(selectedService),
+                            color: primaryColor,
+                            size: 24,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
                           child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border:
-                                      Border.all(color: Colors.grey, width: 2),
-                                ),
-                                padding: const EdgeInsets.all(
-                                    20), // adjust padding for icon size
-                                child: const Icon(
-                                  Icons.inbox, // use any icon you prefer
-                                  size: 48,
-                                  color: Colors.grey,
+                              Text(
+                                'Available Drivers',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
                                 ),
                               ),
-                              const SizedBox(
-                                  height: 16), // space between icon and text
                               Text(
-                                'No Available Driver found',
-                                style: GoogleFonts.poppins(fontSize: 18),
+                                '$selectedService Service',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      );
-                    }
-
-                    return Expanded(
-                      child: ListView.builder(
-                        itemCount: nearbyDrivers.length,
-                        itemBuilder: (context, index) {
-                          AvailableDriverData item = nearbyDrivers[index];
-                          final motorbiker = item;
-
-                          // Calculate the distance between user and driver
-                          double distance = calculateDistance(sLat, sLng,
-                              item.latitude ?? 0, item.longitude ?? 0);
-
-                          return Container(
-                            margin: const EdgeInsets.symmetric(vertical: 8),
-                            padding: const EdgeInsets.symmetric(vertical: 5),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: whiteColor1,
-                                width: 2,
+                      ],
+                    )
+                        .animate()
+                        .fadeIn(duration: 300.ms)
+                        .slideY(begin: -0.2, end: 0),
+                  ),
+                  // List
+                  Expanded(
+                    child: BlocConsumer<AvailableDriverLocationBloc,
+                        AvailableDriverLocationState>(
+                      listener: (context, state) {},
+                      builder: (context, state) {
+                        if (state is AvailableDriverLocationLoading) {
+                          return Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const SpinKitDoubleBounce(
+                                color: primaryColor,
+                                size: 50,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      const Color.fromARGB(255, 188, 188, 188)
-                                          .withOpacity(0.1),
-                                  spreadRadius: 2,
-                                  blurRadius: 6,
-                                  offset: const Offset(0, 3),
+                              const SizedBox(height: 20),
+                              Text(
+                                'Finding nearby drivers...',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.grey[600],
                                 ),
-                              ],
-                            ),
-                            child: ListTile(
-                              title: Row(
-                                children: [
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        "${item.motorBiker!.fname ?? "------"} ${item.motorBiker!.lname ?? "------"}",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w500,
-                                          color: primaryColor,
-                                        ),
-                                      ),
-                                      Text(
-                                        'Phone: ${item.motorBiker!.phone ?? "------"}',
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w300,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                            ],
+                          ).animate().fadeIn(duration: 400.ms);
+                        }
+
+                        if (state is AvailableDriverLocationSuccess) {
+                          List<AvailableDriverData> nearbyDrivers = state
+                              .availableDriverOnMapModel.data!
+                              .where((driver) {
+                            if (driver.latitude != null &&
+                                driver.longitude != null) {
+                              double distance = calculateDistance(sLat, sLng,
+                                  driver.latitude!, driver.longitude!);
+                              return distance <= distanceThreshold;
+                            }
+                            return false;
+                          }).toList();
+
+                          if (nearbyDrivers.isEmpty) {
+                            return Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Container(
-                                    margin: const EdgeInsets.only(
-                                        top: 4, bottom: 6),
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 6, horizontal: 12),
+                                    padding: const EdgeInsets.all(32),
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(4),
-                                      color: whiteColor1,
+                                      color: Colors.grey[100],
+                                      shape: BoxShape.circle,
                                     ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Visibility(
-                                          visible: item.motorBiker?.motorType !=
-                                                  null ||
-                                              item.motorBiker?.motorType !=
-                                                  "null",
-                                          child: Text(
-                                              'Motor: ${item.motorBiker?.motorType != null || item.motorBiker?.motorType != "null" ? item.motorBiker?.motorType : '-------'}'),
-                                        ),
-                                        Text(
-                                            'Plate: ${item.motorBiker!.plateNumber ?? '-------'}'),
-                                      ],
+                                    child: Icon(
+                                      Icons.search_off,
+                                      size: 64,
+                                      color: Colors.grey[400],
                                     ),
                                   ),
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 6, horizontal: 12),
-                                        decoration: BoxDecoration(
-                                          borderRadius:
-                                              BorderRadius.circular(20),
-                                          color:
-                                              motorbiker.motorBiker!.status ==
-                                                          'ONLINE' ||
-                                                      motorbiker.motorBiker!
-                                                              .status ==
-                                                          'ACTIVE'
-                                                  ? Colors.green
-                                                  : Colors.red,
-                                        ),
-                                        child: Text(
-                                          distance < 1
-                                              ? '${(distance * 1000).toStringAsFixed(0)} m' // Converts to meters if distance is under 1 km
-                                              : '${distance.toStringAsFixed(2)} km', // Displays in km if distance is 1 km or more
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                      InkWell(
-                                        onTap: () {
-                                          Navigator.pop(context);
-                                          motorbikerData = item;
-                                          _showRequestBottomSheet(
-                                              context, item);
-                                        },
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              vertical: 10, horizontal: 18),
-                                          decoration: BoxDecoration(
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              border: Border.all(
-                                                  color: Colors.green,
-                                                  width: 1)),
-                                          child: Text(
-                                            'Request  ',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: 14,
-                                              color: primaryColor,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                  const SizedBox(height: 24),
+                                  Text(
+                                    'No drivers available',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Try again in a few moments',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 14,
+                                      color: Colors.grey[500],
+                                    ),
                                   ),
                                 ],
-                              ),
-                            ),
+                              )
+                                  .animate()
+                                  .fadeIn(duration: 400.ms)
+                                  .scale(delay: 200.ms),
+                            );
+                          }
+
+                          return ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: nearbyDrivers.length,
+                            itemBuilder: (context, index) {
+                              AvailableDriverData item = nearbyDrivers[index];
+                              double distance = calculateDistance(sLat, sLng,
+                                  item.latitude ?? 0, item.longitude ?? 0);
+
+                              return _buildDriverCard(item, distance, index)
+                                  .animate()
+                                  .fadeIn(
+                                      duration: 400.ms, delay: (50 * index).ms)
+                                  .slideX(
+                                      begin: 0.2,
+                                      end: 0,
+                                      delay: (50 * index).ms);
+                            },
                           );
-                        },
-                      ),
-                    );
-                  }
-                  return const Text('');
-                },
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildDriverCard(
+      AvailableDriverData item, double distance, int index) {
+    final isOnline = item.motorBiker!.status == 'ONLINE' ||
+        item.motorBiker!.status == 'ACTIVE';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isOnline
+              ? Colors.green.withOpacity(0.3)
+              : Colors.grey.withOpacity(0.3),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Driver info header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        primaryColor,
+                        primaryColor.withOpacity(0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "${item.motorBiker!.fname ?? "------"} ${item.motorBiker!.lname ?? "------"}",
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: primaryColor,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Icon(Icons.phone_outlined,
+                              size: 14, color: Colors.grey[600]),
+                          const SizedBox(width: 4),
+                          Text(
+                            item.motorBiker!.phone ?? "------",
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Status badge
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isOnline ? Colors.green : Colors.red,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isOnline ? 'Online' : 'Offline',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                    .animate(onPlay: (controller) => controller.repeat())
+                    .shimmer(delay: 2000.ms, duration: 1500.ms),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Vehicle info
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (item.motorBiker?.motorType != null &&
+                      item.motorBiker?.motorType != "null")
+                    Row(
+                      children: [
+                        Icon(Icons.motorcycle,
+                            size: 16, color: Colors.grey[600]),
+                        const SizedBox(width: 6),
+                        Text(
+                          item.motorBiker!.motorType ?? '-------',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  Row(
+                    children: [
+                      Icon(Icons.numbers, size: 16, color: Colors.grey[600]),
+                      const SizedBox(width: 6),
+                      Text(
+                        item.motorBiker!.plateNumber ?? '-------',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Distance and request button
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        isOnline ? Colors.green : Colors.red,
+                        isOnline
+                            ? Colors.green.withOpacity(0.7)
+                            : Colors.red.withOpacity(0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        distance < 1
+                            ? '${(distance * 1000).toStringAsFixed(0)} m'
+                            : '${distance.toStringAsFixed(2)} km',
+                        style: GoogleFonts.poppins(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(context);
+                    motorbikerData = item;
+                    _showRequestBottomSheet(context, item);
+                  },
+                  icon: const Icon(Icons.send, size: 18),
+                  label: Text(
+                    'Request',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                )
+                    .animate()
+                    .fadeIn(duration: 200.ms)
+                    .scale(begin: const Offset(0.8, 0.8), duration: 200.ms),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -680,22 +924,37 @@ class _HomeState extends State<Home> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 26),
+          decoration: const BoxDecoration(
+            color: whiteColor,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(top: 16.0),
                 child: Text(
-                  'FAVORITE LOCATION',
+                  'FAVORITE LOCATIONS',
                   style: GoogleFonts.poppins(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: primaryColor),
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: primaryColor,
+                  ),
                 ),
-              ),
+              ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.2, end: 0),
               const SizedBox(height: 10),
               Expanded(
                 child: ListView.builder(
@@ -712,27 +971,43 @@ class _HomeState extends State<Home> {
                       lng: address['longitude'],
                       icon: address['icon'],
                       onTap: () {
-                        // Action when the item is tapped
                         _onAddressTap(context, address);
                       },
-                    );
+                    )
+                        .animate()
+                        .fadeIn(duration: 300.ms, delay: (50 * index).ms)
+                        .slideX(begin: -0.2, end: 0, delay: (50 * index).ms);
                   },
                 ),
               ),
               Row(
                 children: [
-                  MyOutlineButton(
-                    title: "Close Favorite",
-                    icon: Icons.close,
-                    titleColor: redColor,
-                    backgroundColor: whiteColor,
-                    width: 100,
-                    onTap: () {
-                      setState(() {
-                        isPickUpAddress = false;
-                      });
-                      Navigator.of(context).pop();
-                    },
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          isPickUpAddress = false;
+                        });
+                        Navigator.of(context).pop();
+                      },
+                      icon: const Icon(Icons.close),
+                      label: Text(
+                        'Close',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -744,31 +1019,24 @@ class _HomeState extends State<Home> {
   }
 
   void _onAddressTap(BuildContext context, Map<String, dynamic> address) {
-    // Perform an action when an address is tapped
-    // For example, show a snackbar with the address name and coordinates
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
           "Selected: ${address['name']} (Lat: ${address['latitude']}, Long: ${address['longitude']})",
         ),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 2),
       ),
     );
     setState(() {
-      // sLat = address['latitude'];
-      // sLng = address['longitude'];
       isPickUpAddressSelected = true;
       isPickUpAddress = false;
       _currentAddress = address['address'];
     });
     _showRequestBottomSheet(context, motorbikerData);
-    // Close the bottom sheet
-
-    // You could also navigate to another screen or perform other actions here
-    // Navigator.push(context, MaterialPageRoute(builder: (context) => YourNextScreen()));
   }
 
-  // Function to show bottom sheet with request
   void _showRequestBottomSheet(
       BuildContext context, AvailableDriverData motorbike) {
     showModalBottomSheet(
@@ -777,488 +1045,186 @@ class _HomeState extends State<Home> {
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return DraggableScrollableSheet(
-          expand: false, // Allows scrolling if the content exceeds the height
+          initialChildSize: 0.85,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
           builder: (BuildContext context, ScrollController scrollController) {
             return Container(
-              padding: const EdgeInsets.all(16.0),
-              decoration: const BoxDecoration(
-                  color: whiteColor,
-                  borderRadius:
-                      BorderRadius.vertical(top: Radius.circular(20))),
-              child: SingleChildScrollView(
-                controller: scrollController,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 16.0),
-                          child: Text(
-                            '$selectedService Request',
-                            style: GoogleFonts.poppins(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                                color: primaryColor),
-                          ),
-                        ),
-                        InkWell(
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showMotorbikersBottomSheet(context);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 8, horizontal: 8),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Icon(Icons.close),
-                          ),
-                        ), // Navigate to motorbike details
-                      ],
+              decoration: BoxDecoration(
+                color: whiteColor,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(30)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 20,
+                    offset: const Offset(0, -5),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // Drag handle
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    const SizedBox(height: 20),
-                    Container(
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      padding: const EdgeInsets.symmetric(vertical: 5),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(10),
-                        color: whiteColor0,
-                        border: Border.all(
-                          color: whiteColor1,
-                          width: 1,
-                        ),
-                      ),
-                      child: ListTile(
-                        title: Row(
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                    width: MediaQuery.of(context).size.width - 200,
-                                    child: Text(
-                                      "DRIVER / MOTOBIKER",
-                                      maxLines: 1,
-                                      // softWrap: false,
-                                      textAlign: TextAlign.left,
-                                      style: GoogleFonts.poppins(
-                                          fontWeight: FontWeight.w300,
-                                          color: primaryColor,
-                                          fontSize: 10),
-                                    )),
-                                Text(
-                                  '${motorbike.motorBiker!.fname} ${motorbike.motorBiker!.lname}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                Text(
-                                  'Phone: ${motorbike.motorBiker!.phone}',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w300,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        trailing: InkWell(
-                          onTap: () {
-                            FlutterPhoneDirectCaller.callNumber(
-                                motorbike.motorBiker!.phone.toString());
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 8, horizontal: 8),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: const Icon(Icons.call, color: orangeColor),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 6.0, vertical: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      controller: scrollController,
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Checkbox for Favorite Pickup Address
-                          Visibility(
-                            visible: false,
-                            child: Row(
-                              children: [
-                                Checkbox(
-                                  value: isPickUpAddress,
-                                  onChanged: (bool? newValue) {
-                                    setState(() {
-                                      isPickUpAddress = newValue!;
-                                      // if (isPickUpAddress) {
-                                      //   _showFavoriteAddressesBottomSheet(
-                                      //       context);
-                                      // }
-
-                                      //Remove later
-
-                                      onSearchOriginCity(context);
-                                    });
-                                  },
-                                ),
-                                GestureDetector(
-                                  onTap: () {
-                                    setState(() {
-                                      // isPickUpAddress = !isPickUpAddress;
-                                      // if (isPickUpAddress) {
-                                      //   _showFavoriteAddressesBottomSheet(
-                                      //       context);
-                                      // }
-
-                                      //Remove later
-                                      onSearchOriginCity(context);
-                                    });
-                                  },
-                                  child: const Text(
-                                    "Favorite Pickup",
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors
-                                          .blue, // Customize color if needed
+                          // Header
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: primaryColor.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(
+                                      _getServiceIcon(selectedService),
+                                      color: primaryColor,
+                                      size: 24,
                                     ),
                                   ),
+                                  const SizedBox(width: 12),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Request Details',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                          color: primaryColor,
+                                        ),
+                                      ),
+                                      Text(
+                                        '$selectedService Service',
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 14,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              IconButton(
+                                onPressed: () {
+                                  Navigator.pop(context);
+                                  _showMotorbikersBottomSheet(context);
+                                },
+                                icon: const Icon(Icons.close),
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.grey[100],
                                 ),
-                              ],
-                            ),
-                          ),
-                          // Search Pickup Address Button
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              // Action for searching pickup addresses
-                              onSearchOriginCity(context);
-                            },
-                            icon: const Icon(Icons.search),
-                            label: const Text("Search Pickup"),
-                            style: ElevatedButton.styleFrom(
-                              foregroundColor: Colors.green,
-                              backgroundColor:
-                                  Colors.transparent, // White text color
-                              elevation: 0, // No elevation
-
-                              fixedSize: const Size(200,
-                                  30), // Set button height to 50 and width to fill
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: MediaQuery.of(context).size.width,
-                      decoration: BoxDecoration(
-                          color: whiteColor,
-                          border: Border.all(color: primaryColor, width: 1),
-                          borderRadius: BorderRadius.circular(10)),
-                      margin: const EdgeInsets.symmetric(
-                          vertical: 0, horizontal: 0),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 7, horizontal: 10),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                  width: 280,
-                                  child: Text(
-                                    "CURRENT ADDRESS",
-                                    maxLines: 1,
-                                    // softWrap: false,
-                                    textAlign: TextAlign.left,
-                                    style: GoogleFonts.poppins(
-                                        fontWeight: FontWeight.w300,
-                                        fontSize: 10),
-                                  )),
-                              SizedBox(
-                                  width: 280,
-                                  child: Text(
-                                    _currentAddress.toString(),
-                                    maxLines: 2,
-                                    // softWrap: false,
-                                    textAlign: TextAlign.left,
-                                    style: GoogleFonts.poppins(
-                                        color: primaryColor,
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 13),
-                                  )),
+                              ),
                             ],
-                          ),
-                          IconButton(
+                          )
+                              .animate()
+                              .fadeIn(duration: 300.ms)
+                              .slideY(begin: -0.2, end: 0),
+                          const SizedBox(height: 24),
+
+                          // Driver Card
+                          _buildDriverInfoCard(motorbike)
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 100.ms)
+                              .slideX(begin: -0.1, end: 0),
+                          const SizedBox(height: 16),
+
+                          // Search Pickup Button
+                          _buildSearchButton(
+                            icon: Icons.search,
+                            label: 'Search Pickup Address',
+                            onPressed: () => onSearchOriginCity(context),
+                          )
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 200.ms)
+                              .slideX(begin: 0.1, end: 0),
+                          const SizedBox(height: 16),
+
+                          // Current Address
+                          _buildAddressCard(
+                            icon: Icons.my_location,
+                            title: 'PICKUP LOCATION',
+                            address: _currentAddress.toString(),
+                            iconColor: Colors.blue,
+                            trailing: IconButton(
                               onPressed: () {
                                 setState(() {
                                   isPickUpAddressSelected = false;
                                   _getCurrentLocation();
                                 });
                               },
-                              icon: isPickUpAddressSelected
-                                  ? const Icon(
-                                      Icons.close,
-                                      color: redColor,
-                                    )
-                                  : const Icon(
-                                      Icons.location_searching_rounded,
-                                      color: greenColor,
-                                    ))
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InkWell(
-                          onTap: () {
-                            onSearchCity(context);
-                          },
-                          child: Container(
-                            width: MediaQuery.of(context).size.width,
-                            decoration: BoxDecoration(
-                                color: whiteColor,
-                                borderRadius: BorderRadius.circular(10),
-                                border:
-                                    Border.all(width: 1.2, color: greyColor1)),
-                            margin: const EdgeInsets.symmetric(
-                                vertical: 0, horizontal: 0),
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 10, horizontal: 13),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(
-                                      CupertinoIcons.placemark,
-                                      color: greyColor1,
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.all(8.0),
-                                      child: SizedBox(
-                                        width:
-                                            MediaQuery.of(context).size.width /
-                                                1.5,
-                                        child: Text(
-                                          locationSelected != ""
-                                              ? locationSelected
-                                              : "Set your destination ",
-                                          overflow: TextOverflow.clip,
-                                          maxLines: 3,
-                                          style: GoogleFonts.poppins(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 12),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Visibility(
-                      visible: locationSelected != '',
-                      child: Container(
-                        decoration: BoxDecoration(
-                            color: whiteColor1,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(width: 1, color: whiteColor1)),
-                        margin: const EdgeInsets.symmetric(
-                            vertical: 0, horizontal: 0),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 14, horizontal: 10),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Distance",
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.fade,
-                                  style: GoogleFonts.poppins(
-                                      color: greyColor,
-                                      fontWeight: FontWeight.w300,
-                                      fontSize: 12),
-                                ),
-                                Text(
-                                  "$distanceOriginDestination Km",
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.fade,
-                                  style: GoogleFonts.poppins(
-                                      color: primaryColor,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15),
-                                )
-                              ],
-                            ),
-                            Visibility(
-                              visible: locationSelected != '',
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    "Unit Price",
-                                    maxLines: 1,
-                                    softWrap: false,
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.fade,
-                                    style: GoogleFonts.poppins(
-                                        color: greyColor,
-                                        fontWeight: FontWeight.w300,
-                                        fontSize: 12),
-                                  ),
-                                  Text(
-                                    "$selectedUnitPrice",
-                                    maxLines: 1,
-                                    softWrap: false,
-                                    textAlign: TextAlign.center,
-                                    overflow: TextOverflow.fade,
-                                    style: GoogleFonts.poppins(
-                                        color: primaryColor,
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 15),
-                                  )
-                                ],
+                              icon: Icon(
+                                isPickUpAddressSelected
+                                    ? Icons.close
+                                    : Icons.location_searching_rounded,
+                                color: isPickUpAddressSelected
+                                    ? Colors.red
+                                    : Colors.green,
                               ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Total Price",
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.fade,
-                                  style: GoogleFonts.poppins(
-                                      color: greyColor,
-                                      fontWeight: FontWeight.w300,
-                                      fontSize: 12),
-                                ),
-                                Text(
-                                  "$distancePrice",
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  textAlign: TextAlign.center,
-                                  overflow: TextOverflow.fade,
-                                  style: GoogleFonts.poppins(
-                                      color: primaryColor,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15),
-                                )
-                              ],
+                          )
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 300.ms)
+                              .slideY(begin: 0.1, end: 0),
+                          const SizedBox(height: 16),
+
+                          // Destination
+                          InkWell(
+                            onTap: () => onSearchCity(context),
+                            child: _buildAddressCard(
+                              icon: CupertinoIcons.location_fill,
+                              title: 'DESTINATION',
+                              address: locationSelected.isNotEmpty
+                                  ? locationSelected
+                                  : "Tap to set destination",
+                              iconColor: Colors.green,
+                              isClickable: true,
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 12.0),
-                      child: Row(
-                        children: [
-                          MyOutlineButton(
-                            title: "Cancel",
-                            icon: Icons.close,
-                            titleColor: redColor,
-                            backgroundColor: whiteColor,
-                            width: 100,
-                            onTap: () {
-                              Navigator.of(context).pop();
-                            },
-                          ),
-                          BlocConsumer<CreateRequestBloc, CreateRequestState>(
-                            listener: (context, state) {
-                              if (state is CreateRequestError) {
-                                showErrorAlert(state.message, context);
-                              }
+                          )
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 400.ms)
+                              .slideY(begin: 0.1, end: 0),
+                          const SizedBox(height: 20),
 
-                              if (state is CreateRequestSuccess) {
-                                // Close the bottom sheet
-                                showSuccessAlert(
-                                  "REQUEST SENT SUCCESSFULL",
-                                  context,
-                                );
+                          // Distance and Price Info
+                          if (locationSelected.isNotEmpty)
+                            _buildPriceCard()
+                                .animate()
+                                .fadeIn(duration: 400.ms, delay: 500.ms)
+                                .scale(
+                                    begin: const Offset(0.9, 0.9),
+                                    end: const Offset(1, 1)),
+                          const SizedBox(height: 24),
 
-                                Future.delayed(
-                                    const Duration(milliseconds: 200), () {
-                                  context.safeGoNamed(myRequests);
-                                });
-                              }
-                            },
-                            builder: (context, state) {
-                              return MyIconButton(
-                                title: state is CreateRequestLoading
-                                    ? 'Loading....'
-                                    : "Send Request",
-                                icon: Icons.local_taxi_rounded,
-                                titleColor: whiteColor,
-                                backgroundColor: primaryColor,
-                                width: 100,
-                                onTap: () {
-                                  if (locationSelected == '') {
-                                    showErrorAlert(
-                                      "Please select a location",
-                                      context,
-                                    );
-                                  } else if (selectedService == '') {
-                                    showErrorAlert(
-                                      "Please select a service",
-                                      context,
-                                    );
-                                  } else if (selectedUnitPrice == '') {
-                                    showErrorAlert(
-                                      "Please select a unit price",
-                                      context,
-                                    );
-                                  } else {
-                                    createRequestBloc.add(
-                                      HandleCreateRequest(
-                                        motorBikerId:
-                                            motorbike.motorBiker!.id!.toInt(),
-                                        clientId: userId!.toInt(),
-                                        requestType:
-                                            selectedService.toUpperCase(),
-                                        requestedTime: DateTime
-                                            .now(), // Set the current time
-                                        originLocation:
-                                            _currentAddress.toString(),
-                                        destinationLocation: locationSelected,
-                                        status: 'PENDING',
-                                      ),
-                                    );
-                                  }
-                                },
-                              );
-                            },
-                          ),
+                          // Action Buttons
+                          _buildActionButtons(motorbike)
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 600.ms)
+                              .slideY(begin: 0.2, end: 0),
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             );
           },
@@ -1267,7 +1233,367 @@ class _HomeState extends State<Home> {
     );
   }
 
-// Function to build the Drawer
+  Widget _buildDriverInfoCard(AvailableDriverData motorbike) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            primaryColor.withOpacity(0.05),
+            primaryColor.withOpacity(0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primaryColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [primaryColor, primaryColor.withOpacity(0.7)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.person, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ASSIGNED DRIVER',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  '${motorbike.motorBiker!.fname} ${motorbike.motorBiker!.lname}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: primaryColor,
+                  ),
+                ),
+                Text(
+                  'Phone: ${motorbike.motorBiker!.phone}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              FlutterPhoneDirectCaller.callNumber(
+                  motorbike.motorBiker!.phone.toString());
+            },
+            icon: const Icon(Icons.call),
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.green,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.all(12),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat())
+              .shimmer(delay: 2000.ms, duration: 1500.ms),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.white,
+          foregroundColor: primaryColor,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(color: primaryColor.withOpacity(0.3)),
+          ),
+          elevation: 0,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAddressCard({
+    required IconData icon,
+    required String title,
+    required String address,
+    required Color iconColor,
+    Widget? trailing,
+    bool isClickable = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: iconColor.withOpacity(0.3), width: 1.5),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: iconColor, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  address,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: isClickable && address.contains('Tap')
+                        ? Colors.grey[500]
+                        : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (trailing != null) trailing,
+          if (isClickable)
+            Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriceCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.green.withOpacity(0.1),
+            Colors.green.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.green.withOpacity(0.3), width: 2),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _buildPriceItem(
+            icon: Icons.straighten,
+            label: 'Distance',
+            value: '$distanceOriginDestination Km',
+            color: Colors.blue,
+          ),
+          Container(width: 1, height: 40, color: Colors.grey[300]),
+          _buildPriceItem(
+            icon: Icons.attach_money,
+            label: 'Unit Price',
+            value: selectedUnitPrice,
+            color: Colors.orange,
+          ),
+          Container(width: 1, height: 40, color: Colors.grey[300]),
+          _buildPriceItem(
+            icon: Icons.payments,
+            label: 'Total',
+            value: distancePrice,
+            color: Colors.green,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriceItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 11,
+            fontWeight: FontWeight.w400,
+            color: Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildActionButtons(AvailableDriverData motorbike) {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+            label: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.red,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.red),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: BlocConsumer<CreateRequestBloc, CreateRequestState>(
+            listener: (context, state) {
+              if (state is CreateRequestError) {
+                showErrorAlert(state.message, context);
+              }
+              if (state is CreateRequestSuccess) {
+                showSuccessAlert("REQUEST SENT SUCCESSFULLY", context);
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  context.safeGoNamed(myRequests);
+                });
+              }
+            },
+            builder: (context, state) {
+              return ElevatedButton.icon(
+                onPressed: state is CreateRequestLoading
+                    ? null
+                    : () {
+                        if (locationSelected == '') {
+                          showErrorAlert("Please select a location", context);
+                        } else if (selectedService == '') {
+                          showErrorAlert("Please select a service", context);
+                        } else if (selectedUnitPrice == '') {
+                          showErrorAlert("Please select a unit price", context);
+                        } else {
+                          createRequestBloc.add(
+                            HandleCreateRequest(
+                              motorBikerId: motorbike.motorBiker!.id!.toInt(),
+                              clientId: userId!.toInt(),
+                              requestType: selectedService.toUpperCase(),
+                              requestedTime: DateTime.now(),
+                              originLocation: _currentAddress.toString(),
+                              destinationLocation: locationSelected,
+                              status: 'PENDING',
+                            ),
+                          );
+                        }
+                      },
+                icon: state is CreateRequestLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+                label: Text(
+                  state is CreateRequestLoading ? 'Sending...' : 'Send Request',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                  disabledBackgroundColor: primaryColor.withOpacity(0.5),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  IconData _getServiceIcon(String service) {
+    switch (service.toUpperCase()) {
+      case 'RIDE':
+        return Icons.motorcycle;
+      case 'COURIER':
+        return Icons.delivery_dining;
+      case 'TUK_TUK':
+        return Icons.local_taxi;
+      case 'RIFANI':
+        return Icons.electric_bike;
+      case 'TAXICAB':
+        return Icons.local_taxi;
+      case 'TRUCK':
+        return Icons.local_shipping;
+      default:
+        return Icons.directions_car;
+    }
+  }
+
   Drawer _buildDrawer(BuildContext context) {
     return Drawer(
       backgroundColor: primaryColor,
@@ -1275,210 +1601,105 @@ class _HomeState extends State<Home> {
       child: Column(
         children: [
           DrawerHeader(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
-                  const SizedBox(width: 10), // Space between avatar and text
-                  // Welcome Text and Name
-                  Container(
-                    margin: const EdgeInsets.only(top: 40),
-                    width: 150,
-                    decoration: const BoxDecoration(),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Welcome,',
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 3,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w300,
-                            fontSize: 16,
-                          ),
-                        ),
-                        SizedBox(
-                          height: 50,
-                          child: Text(
-                            '$userFullNames',
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 3, // Display the user's name
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                              fontSize: 16,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  primaryColor,
+                  primaryColor.withOpacity(0.8),
                 ],
               ),
             ),
-          ),
-
-          ListTile(
-            leading: const Icon(
-              Icons.request_page,
-              color: Colors.white,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person,
+                    color: Colors.white,
+                    size: 32,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Welcome,',
+                  style: GoogleFonts.poppins(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w400,
+                    fontSize: 14,
+                  ),
+                ),
+                Text(
+                  '$userFullNames',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                  ),
+                ),
+              ],
             ),
-            title: const Text(
+          ).animate().fadeIn(duration: 400.ms).slideX(begin: -0.2, end: 0),
+          ListTile(
+            leading: const Icon(Icons.request_page, color: Colors.white),
+            title: Text(
               'My Requests',
-              style: TextStyle(
+              style: GoogleFonts.poppins(
                 color: Colors.white,
-                fontWeight: FontWeight.w300,
-                fontSize: 18,
+                fontWeight: FontWeight.w500,
+                fontSize: 16,
               ),
             ),
             onTap: () {
-              Navigator.pop(context); // Close drawer
+              Navigator.pop(context);
               context.safeGoNamed(myRequests);
             },
-          ),
-          const Spacer(), // Pushes the logout button to the bottom
-          ListTile(
-            leading: const Icon(
-              Icons.delete_forever,
-              color: Colors.red,
+          )
+              .animate()
+              .fadeIn(duration: 400.ms, delay: 100.ms)
+              .slideX(begin: -0.2, end: 0),
+          const Spacer(),
+          Container(
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-            title: const Text(
-              'Delete Account',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
+            child: ListTile(
+              leading: const Icon(Icons.logout, color: Colors.white),
+              title: Text(
+                'Logout',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
               ),
+              onTap: () async {
+                Navigator.pop(context);
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
+                context.safeGoNamed(splash);
+              },
             ),
-            onTap: () {
-              // Close drawer first
-              Navigator.pop(context);
-              
-              // Show confirmation dialog
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title: const Text('Delete Account'),
-                    content: const Text('Are you sure you want to permanently delete your account? This action cannot be undone.'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Cancel'),
-                      ),
-                      TextButton(
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.red,
-                        ),
-                        onPressed: () async {
-                          // Delete account functionality would go here
-                          // For now, we'll just show a success message and log out
-                          Navigator.pop(context); // Close dialog
-                          
-                          // Store the navigator context to use later
-                          final navigatorContext = Navigator.of(context);
-                          
-                          // Create a completer to control when the dialog closes
-                          final completer = Completer();
-                          
-                          // Show loading indicator
-                          showDialog(
-                            context: context,
-                            barrierDismissible: false,
-                            builder: (BuildContext dialogContext) {
-                              // When the completer completes, close the dialog
-                              completer.future.then((_) {
-                                Navigator.of(dialogContext).pop();
-                              });
-                              
-                              return const AlertDialog(
-                                content: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    CircularProgressIndicator(),
-                                    SizedBox(height: 16),
-                                    Text('Deleting account...'),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                          
-                          try {
-                            // Simulate account deletion API call
-                            await Future.delayed(const Duration(seconds: 2));
-                            
-                            // Clear all shared preferences (same as logout)
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.clear();
-                            
-                            // Complete the completer to close the dialog
-                            completer.complete();
-                            
-                            // Wait a moment for the dialog to close
-                            await Future.delayed(const Duration(milliseconds: 300));
-                            
-                            // Navigate to splash screen
-                            navigatorContext.pushNamedAndRemoveUntil(splash, (route) => false);
-                          } catch (e) {
-                            // If there's an error, still close the dialog
-                            completer.complete();
-                            // Show error message
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Error: ${e.toString()}')),
-                            );
-                          }
-                        },
-                        child: const Text('Delete'),
-                      ),
-                    ],
-                  );
-                },
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(
-              Icons.logout,
-              color: Colors.white,
-            ),
-            title: const Text(
-              'Logout',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-                fontSize: 18,
-              ),
-            ),
-            onTap: () async {
-              // Close drawer
-              Navigator.pop(context);
-
-              // Clear all shared preferences
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-
-              // Navigate to the login or desired screen after clearing preferences
-              context.safeGoNamed(
-                  splash); // Replace 'login' with your login route name
-            },
-          ),
-          const SizedBox(height: 20), // Adds some space at the bottom
+          )
+              .animate()
+              .fadeIn(duration: 400.ms, delay: 200.ms)
+              .slideY(begin: 0.2, end: 0),
+          const SizedBox(height: 20),
         ],
       ),
     );
   }
-
-  // final _firestore = FirebaseFirestore.instance;
-
-  // void sendDriverNotification(String driverId, String title, String msg) async {
-  //   DocumentSnapshot snap =
-  //       await _firestore.collection("driverTokens").doc(driverId).get();
-  //   String token = snap['token'];
-  // }
 
   Future<bool> _onWillPop() async {
     return false;
@@ -1489,133 +1710,239 @@ class _HomeState extends State<Home> {
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: primaryColor,
-          elevation: 0,
-          title: const Text("Gerayo Amahoro Speed", style: TextStyle(color: Colors.white),),
-          actions: [
-            IconButton(
-              onPressed: () {
-                // Handle request job action
-                AppNavigation.navigateToRefreshHome(context);
-              },
-              icon: const Icon(
-                Icons.sync,
-                color: Colors.yellow,
-                size: 40,
-              ),
-            ),
-            const SizedBox(width: 10),
-          ],
-        ),
-        drawer: _buildDrawer(context), // Add the Drawer here
+        backgroundColor: primaryColor,
+        drawer: _buildDrawer(context),
         body: Stack(
           children: [
-            // Background Image
+            // Background Gradient Layer
             Positioned.fill(
-              child: Image.asset(
-                "assets/images/backparttern.png",
-                color: Colors.black.withOpacity(0.3), // Adjust opacity here
-                colorBlendMode: BlendMode.srcATop,
-                fit: BoxFit.cover,
-              ),
-            ),
-            Positioned(
               child: Container(
-                color: primaryColorOverlay,
-              ),
-            ),
-            // Main Content
-            SingleChildScrollView(
-              child: Center(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 20),
-                    Container(
-                      margin: const EdgeInsets.only(left: 20.0),
-                      child: Text(
-                        'Welcome $userFullNames',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w300,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Container(
-                      margin: const EdgeInsets.only(left: 20.0),
-                      child: const Text(
-                        'Choose Service',
-                        style: TextStyle(
-                          fontSize: 38,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        _buildServiceRow(context, [
-                          {
-                            "title": "RIDE",
-                            "image": "assets/images/motorcycle-white.png",
-                            "service": "Ride",
-                          },
-                          {
-                            "title": "Courier / Delivery",
-                            "image": "assets/images/shipping.png",
-                            "service": "Courier",
-                          },
-                        ]),
-                        const SizedBox(height: 20), // Space between buttons
-                        _buildServiceRow(context, [
-                          {
-                            "title": "BAJAJ Tuk Tuk",
-                            "image": "assets/images/tuk-tuk.png",
-                            "service": "Tuk_Tuk",
-                          },
-                          {
-                            "title": "RIFANI",
-                            "image": "assets/images/lifan.png",
-                            "service": "RIFANI",
-                          },
-                        ]),
-                        const SizedBox(height: 20), // Space between buttons
-                        _buildServiceRow(context, [
-                          {
-                            "title": "TAXI CAB",
-                            "image": "assets/images/taxi_cab.png",
-                            "service": "TaxiCab",
-                          },
-                          {
-                            "title": "TRUCK",
-                            "image": "assets/images/delivery.png",
-                            "service": "Truck",
-                          },
-                        ]),
-
-                        const SizedBox(height: 60),
-                      ],
-                    ),
-                  ],
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      primaryColor,
+                      primaryColor.withOpacity(0.9),
+                      primaryColor.withOpacity(0.8),
+                    ],
+                  ),
                 ),
               ),
             ),
+            // Background Pattern Layer
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.1,
+                child: Image.asset(
+                  "assets/images/backparttern.png",
+                  fit: BoxFit.cover,
+                  color: Colors.white,
+                  colorBlendMode: BlendMode.overlay,
+                ),
+              ),
+            ),
+            // Main Content with SliverAppBar
+            CustomScrollView(
+              slivers: [
+                // Elegant SliverAppBar
+                SliverAppBar(
+                  expandedHeight: 160.0,
+                  floating: false,
+                  pinned: true,
+                  elevation: 0,
+                  backgroundColor: Colors.transparent,
+                  leading: Builder(
+                    builder: (context) => IconButton(
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.menu, color: Colors.white),
+                      ),
+                      onPressed: () => Scaffold.of(context).openDrawer(),
+                    ),
+                  ),
+                  actions: [
+                    IconButton(
+                      onPressed: _handleRefresh,
+                      icon: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: RotationTransition(
+                          turns: _refreshController,
+                          child: const Icon(Icons.sync, color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.1),
+                          ],
+                        ),
+                      ),
+                      child: SafeArea(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Welcome back,',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16,
+                                  color: Colors.white.withOpacity(0.9),
+                                  fontWeight: FontWeight.w400,
+                                ),
+                              )
+                                  .animate()
+                                  .fadeIn(duration: 400.ms)
+                                  .slideX(begin: -0.2, end: 0),
+                              const SizedBox(height: 4),
+                              Text(
+                                '$userFullNames',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 24,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              )
+                                  .animate()
+                                  .fadeIn(duration: 400.ms, delay: 100.ms)
+                                  .slideX(begin: -0.2, end: 0),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    // titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+                    // title: Text(
+                    //   'Gerayo Amahoro Speed',
+                    //   style: GoogleFonts.poppins(
+                    //     fontSize: 16,
+                    //     fontWeight: FontWeight.w600,
+                    //     color: Colors.white,
+                    //   ),
+                    // ),
+                  ),
+                ),
+                // Content
+                SliverToBoxAdapter(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.02),
+                        ],
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 10),
+                          // Section Header
+                          Row(
+                            children: [
+                              Container(
+                                width: 4,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                'Choose Your Service',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 26,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          )
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 200.ms)
+                              .slideX(begin: -0.2, end: 0),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Select a service to get started',
+                            style: GoogleFonts.poppins(
+                              fontSize: 14,
+                              color: Colors.white.withOpacity(0.8),
+                              fontWeight: FontWeight.w400,
+                            ),
+                          )
+                              .animate()
+                              .fadeIn(duration: 400.ms, delay: 300.ms)
+                              .slideX(begin: -0.2, end: 0),
+                          const SizedBox(height: 5),
+                          // Services Grid
+                          _buildServiceGrid(),
+                          const SizedBox(height: 40),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
-        bottomSheet: Container(
-          color: primaryColor.withOpacity(0.9),
-          height: 40,
-          child: Center(
+        bottomNavigationBar: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                primaryColor.withOpacity(0.95),
+                primaryColor,
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
             child: Text(
-              "Powerd by Besoft & BePay ltd",
-              style: GoogleFonts.poppins(fontSize: 12, color: whiteColor),
+              "Powered by Besoft & BePay ltd",
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                color: Colors.white.withOpacity(0.8),
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.5,
+              ),
             ),
           ),
         ),
@@ -1623,56 +1950,251 @@ class _HomeState extends State<Home> {
     );
   }
 
-  Widget _buildServiceRow(
-      BuildContext context, List<Map<String, String>> services) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: services.map((service) {
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 10),
-          width: MediaQuery.of(context).size.width / 2 - 25,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              foregroundColor: Colors.white,
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10.0),
-                side: const BorderSide(color: Colors.white, width: 2),
-              ),
-              fixedSize: const Size(double.infinity, 150),
+  Widget _buildServiceGrid() {
+    final services = [
+      {
+        "title": "RIDE",
+        "image": "assets/images/motorcycle-white.png",
+        "service": "Ride",
+        "gradient": [Colors.blue, Colors.cyan],
+      },
+      {
+        "title": "Courier",
+        "image": "assets/images/shipping.png",
+        "service": "Courier",
+        "gradient": [Colors.orange, Colors.deepOrange],
+      },
+      {
+        "title": "Tuk Tuk",
+        "image": "assets/images/tuk-tuk.png",
+        "service": "Tuk_Tuk",
+        "gradient": [Colors.green, Colors.teal],
+      },
+      {
+        "title": "RIFANI",
+        "image": "assets/images/lifan.png",
+        "service": "RIFANI",
+        "gradient": [Colors.purple, Colors.deepPurple],
+      },
+      {
+        "title": "Taxi Cab",
+        "image": "assets/images/taxi_cab.png",
+        "service": "TaxiCab",
+        "gradient": [Colors.amber, Colors.orange],
+      },
+      {
+        "title": "Truck",
+        "image": "assets/images/delivery.png",
+        "service": "Truck",
+        "gradient": [Colors.red, Colors.pink],
+      },
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        childAspectRatio: 1.1,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+      ),
+      itemCount: services.length,
+      itemBuilder: (context, index) {
+        final service = services[index];
+        return _buildServiceCard(
+          title: service['title'] as String,
+          image: service['image'] as String,
+          serviceKey: service['service'] as String,
+          gradientColors: service['gradient'] as List<Color>,
+          index: index,
+        );
+      },
+    );
+  }
+
+  Widget _buildServiceCard({
+    required String title,
+    required String image,
+    required String serviceKey,
+    required List<Color> gradientColors,
+    required int index,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            selectedService = serviceKey;
+          });
+          _showMotorbikersBottomSheet(context);
+          _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+        },
+        borderRadius: BorderRadius.circular(20),
+        splashColor: Colors.white.withOpacity(0.1),
+        highlightColor: Colors.white.withOpacity(0.05),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withOpacity(0.25),
+                Colors.white.withOpacity(0.15),
+                Colors.white.withOpacity(0.1),
+              ],
             ),
-            onPressed: () {
-              setState(() {
-                selectedService = service['service']!;
-              });
-              _showMotorbikersBottomSheet(context);
-              _availableDriverLocationBloc
-                  .add(FetchAvailableDriverLocationEvent());
-            },
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              mainAxisAlignment: MainAxisAlignment.center,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.4),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+                spreadRadius: -3,
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(-3, -3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
               children: [
-                Image.asset(
-                  service['image']!,
-                  scale: 8,
+                // Shimmer overlay effect (smaller)
+                Positioned(
+                  top: -30,
+                  right: -30,
+                  child: Container(
+                    width: 70,
+                    height: 70,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: RadialGradient(
+                        colors: [
+                          Colors.white.withOpacity(0.15),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  service['title']!,
-                  style: const TextStyle(fontSize: 16),
+                // Content with reduced padding
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Icon container (smaller)
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.25),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Image.asset(
+                          image,
+                          width: 50,
+                          height: 50,
+                          color: Colors.white,
+                          fit: BoxFit.contain,
+                        ),
+                      )
+                          .animate(onPlay: (controller) => controller.repeat())
+                          .shimmer(
+                            duration: 2000.ms,
+                            delay: (500 * index).ms,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                      const SizedBox(height: 12),
+                      // Title (adjusted font size)
+                      Text(
+                        title,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                          height: 1.2,
+                          letterSpacing: 0.3,
+                          shadows: [
+                            Shadow(
+                              color: Colors.black.withOpacity(0.2),
+                              offset: const Offset(0, 1),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      // Subtitle (smaller)
+                      // Container(
+                      //   padding: const EdgeInsets.symmetric(
+                      //     horizontal: 8,
+                      //     vertical: 2,
+                      //   ),
+                      //   decoration: BoxDecoration(
+                      //     color: Colors.white.withOpacity(0.2),
+                      //     borderRadius: BorderRadius.circular(6),
+                      //   ),
+                      //   child: Text(
+                      //     'Available',
+                      //     style: GoogleFonts.poppins(
+                      //       fontSize: 9,
+                      //       fontWeight: FontWeight.w500,
+                      //       color: Colors.white.withOpacity(0.9),
+                      //     ),
+                      //   ),
+                      // ),
+                    ],
+                  ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 500.ms, delay: (100 * index).ms)
+        .scale(
+          begin: const Offset(0.8, 0.8),
+          end: const Offset(1, 1),
+          duration: 500.ms,
+          delay: (100 * index).ms,
+          curve: Curves.easeOutBack,
+        )
+        .then()
+        .shimmer(
+          duration: 1500.ms,
+          delay: 2000.ms,
+          color: Colors.white.withOpacity(0.1),
         );
-      }).toList(),
-    );
   }
 
-  // For navigation
   void onBackPress() {
-    context.safePop(); // Uses the extension
+    context.safePop();
   }
 }

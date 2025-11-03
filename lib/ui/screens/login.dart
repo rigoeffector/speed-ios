@@ -1,18 +1,14 @@
 // ignore_for_file: public_member_api_docs, sort_constructors_first
 
 import 'package:speed_ios/routes/routes.provider.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_country_code_picker/flutter_country_code_picker.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:speed_ios/api/auth.service.dart';
-import 'package:speed_ios/api/firebase.notification.service.dart';
 import 'package:speed_ios/routes/routes.names.dart';
 import 'package:speed_ios/ui/widgets/buttons/button.dart';
 import 'package:speed_ios/ui/widgets/heading.dart';
@@ -39,9 +35,7 @@ class _LoginState extends State<Login> {
   bool isRegisterLoading = false;
   bool isPhone = false;
   bool _passwordVisible = false;
-  // final _firebaseMessaging = FirebaseMessaging.instance;
-  // final _firestore = FirebaseFirestore.instance;
-  // FirebaseApi firebaseApi = FirebaseApi();
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   @override
@@ -57,25 +51,6 @@ class _LoginState extends State<Login> {
     _passwordController.dispose();
     super.dispose();
   }
-
-  // void getToken(String userId) async {
-  //   await _firebaseMessaging.requestPermission();
-  //   final fcmToken = await _firebaseMessaging.getToken();
-
-  //   token = fcmToken;
-  //   if (kDebugMode) {
-  //     print("MyToken $token");
-  //   }
-
-  //   saveToken(token.toString(), userId);
-  // }
-
-  // void saveToken(String token, String userId) async {
-  //   await _firestore
-  //       .collection('clientTokens')
-  //       .doc(userId)
-  //       .set({'token': token});
-  // }
 
   @override
   Widget build(BuildContext context) {
@@ -374,8 +349,6 @@ class _LoginState extends State<Login> {
 
                       String obtainedClientId =
                           state.userLoginModel.userLoginData!.id.toString();
-
-                      // getToken(obtainedClientId);
 
                       context.safeGoNamed(home, params: {
                         'userId': obtainedClientId,

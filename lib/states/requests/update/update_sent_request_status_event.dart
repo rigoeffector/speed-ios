@@ -12,5 +12,6 @@ class StartEvent extends UpdateSentRequestStatusEvent {}
 class HandleUpdateStatus extends UpdateSentRequestStatusEvent {
   String status;
   String requestId;
-  HandleUpdateStatus({required this.requestId, required this.status});
+  String? cancellationReason;
+  HandleUpdateStatus({required this.requestId, required this.status, this.cancellationReason});
 }

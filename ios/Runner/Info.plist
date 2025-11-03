@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Gerayo Amahoro Speed </string>
+	<string>Gerayo Amahoro Speed</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -30,10 +30,23 @@
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Your location is used to connect you with nearby drivers, calculate accurate distance and arrival times, and provide real-time navigation during your journey. This helps ensure efficient pickup and timely arrival at your destination.</string>
+	
+	<!-- Location Permission Descriptions -->
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Your location is used to find nearby drivers, calculate trip distance and fare estimates, and provide navigation assistance during rides. This helps us connect you with the closest available driver and optimize your route.</string>
+	<string>Gerayo Amahoro Speed needs your location to detect nearby speed cameras, monitor your current driving speed, and alert you when exceeding speed limits to ensure your safety on the road.</string>
+	
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Gerayo Amahoro Speed needs continuous access to your location to provide real-time speed monitoring and speed camera alerts even when the app is running in the background, ensuring your safety throughout your journey.</string>
+	
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Gerayo Amahoro Speed requires background location access to continuously monitor your speed and provide timely alerts about speed cameras and speed limit violations, helping you drive safely at all times.</string>
+	
+	<!-- Background Modes (if needed for background location) -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+	
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

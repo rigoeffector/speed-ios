@@ -21,7 +21,7 @@ class UpdateSentRequestStatusBloc
         emit(UpdateSentRequestStatusLaoding());
         MyRequestsModel updateSentRequestModel;
         updateSentRequestModel = await sentRequestsService
-            .updateSentRequestStatus(event.requestId, event.status);
+            .cancelSentRequestStatus(event.requestId, event.status, event.cancellationReason);
         if (updateSentRequestModel.success) {
           emit(UpdateSentRequestStatusSuccess(
               updateSentRequestModel: updateSentRequestModel));

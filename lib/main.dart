@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:speed_ios/controllers/request_controller.dart';
 import 'package:speed_ios/states/create.client_favorite.location/create_client_favorite_location_bloc.dart';
 import 'package:speed_ios/states/get.favorite.location/get_client_favorite_location_bloc.dart';
+import 'package:speed_ios/states/requests/active_request_bloc.dart';
 import 'package:speed_ios/states/requests/create_request_bloc.dart';
 import 'package:speed_ios/states/requests/fetch/received_sent_requests_bloc.dart';
 import 'package:speed_ios/states/requests/update/update_sent_request_status_bloc.dart';
@@ -166,10 +167,18 @@ class _MyAppState extends State<MyApp> {
             create: (_) =>
                 CreateRequestBloc(CreateRequestInitial(), AuthService())),
         BlocProvider<ReceivedSentRequestsBloc>(
-            create: (_) => ReceivedSentRequestsBloc(
-                ReceivedSentRequestsInitial(), RequestsRepository())),
+          create: (context) => ReceivedSentRequestsBloc(
+            requestsRepository:
+                RequestsRepository(), // Use the instance created above
+          ),
+        ),
         BlocProvider<VerifyOtpBloc>(
-            create: (_) => VerifyOtpBloc(VerifyOtpInitial(), AuthService()))
+            create: (_) => VerifyOtpBloc(VerifyOtpInitial(), AuthService())),
+        BlocProvider(
+          create: (context) => ActiveRequestBloc(
+            AuthService(),
+          ),
+        ),
       ],
       child: MaterialApp.router(
         routerConfig: AppNavigation.router,

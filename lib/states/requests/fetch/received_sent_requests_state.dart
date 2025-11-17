@@ -1,24 +1,34 @@
-// ignore_for_file: must_be_immutable
-
 part of 'received_sent_requests_bloc.dart';
 
-class ReceivedSentRequestsState extends Equatable {
+abstract class ReceivedSentRequestsState extends Equatable {
   const ReceivedSentRequestsState();
 
   @override
-  List<Object> get props => [];
+  List<Object?> get props => [];
 }
 
-class ReceivedSentRequestsInitial extends ReceivedSentRequestsState {}
+class ReceivedSentRequestsInitial extends ReceivedSentRequestsState {
+  const ReceivedSentRequestsInitial();
+}
 
-class ReceivedSentRequestsLoading extends ReceivedSentRequestsState {}
+class ReceivedSentRequestsLoading extends ReceivedSentRequestsState {
+  const ReceivedSentRequestsLoading();
+}
 
 class ReceivedSentRequestsSuccess extends ReceivedSentRequestsState {
-  UserSentRequestsModel userSentRequestsModel;
-  ReceivedSentRequestsSuccess({required this.userSentRequestsModel});
+  final UserSentRequestsModel userSentRequestsModel;
+
+  const ReceivedSentRequestsSuccess({required this.userSentRequestsModel});
+
+  @override
+  List<Object?> get props => [userSentRequestsModel];
 }
 
 class ReceivedSentRequestsError extends ReceivedSentRequestsState {
-  String message;
-  ReceivedSentRequestsError({required this.message});
+  final String message;
+
+  const ReceivedSentRequestsError({required this.message});
+
+  @override
+  List<Object?> get props => [message];
 }

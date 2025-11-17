@@ -1,15 +1,21 @@
 part of 'received_sent_requests_bloc.dart';
 
-class ReceivedSentRequestsEvent extends Equatable {
+abstract class ReceivedSentRequestsEvent extends Equatable {
   const ReceivedSentRequestsEvent();
 
   @override
-  List<Object> get props => [];
+  List<Object?> get props => [];
 }
 
-class StartEvent extends ReceivedSentRequestsEvent {}
-
 class HandleFetchRequests extends ReceivedSentRequestsEvent {
-  String userId;
-  HandleFetchRequests({required this.userId});
+  final String userId;
+
+  const HandleFetchRequests({required this.userId});
+
+  @override
+  List<Object?> get props => [userId];
+}
+
+class ResetReceivedSentRequestsEvent extends ReceivedSentRequestsEvent {
+  const ResetReceivedSentRequestsEvent();
 }

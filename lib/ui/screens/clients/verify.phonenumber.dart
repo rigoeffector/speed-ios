@@ -704,130 +704,335 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                       textAlign: TextAlign.center,
                     ).animate().fadeIn(delay: 400.ms, duration: 600.ms),
                     const SizedBox(height: 50),
-                    Form(
-                      key: formKey,
-                      child: InternationalPhoneNumberInput(
-                        height: 62,
-                        controller: _phoneNumberController,
-                        inputFormatters: const [],
-                        formatter: MaskedInputFormatter('### ### ###'),
-                        initCountry: CountryCodeModel(
-                          name: "Rwanda",
-                          dial_code: "+250",
-                          code: "RW",
-                        ),
-                        betweenPadding: 12,
-                        onInputChanged: (phone) {
-                          setState(() {
-                            countryCode = phone.code;
-                            phoneNumber = phone.rawFullNumber.toString();
-                          });
-                        },
-                        loadFromJson: loadFromJson,
-                        dialogConfig: DialogConfig(
-                          backgroundColor: const Color(0xFF444448),
-                          searchBoxBackgroundColor: const Color(0xFF56565a),
-                          searchBoxIconColor: const Color(0xFFFAFAFA),
-                          countryItemHeight: 50,
-                          flatFlag: true,
-                          topBarColor: primaryColor,
-                          selectedItemColor: const Color(0xFF56565a),
-                          selectedIcon: const Padding(
-                            padding: EdgeInsets.only(left: 10),
-                            child:
-                                Icon(Icons.check_circle, color: primaryColor),
+                    // Form(
+                    //   key: formKey,
+                    //   child: InternationalPhoneNumberInput(
+                    //     height: 62,
+                    //     controller: _phoneNumberController,
+                    //     inputFormatters: const [],
+                    //     formatter: MaskedInputFormatter('### ### ###'),
+                    //     initCountry: CountryCodeModel(
+                    //       name: "Rwanda",
+                    //       dial_code: "+250",
+                    //       code: "RW",
+                    //     ),
+                    //     betweenPadding: 12,
+                    //     onInputChanged: (phone) {
+                    //       setState(() {
+                    //         countryCode = phone.code;
+                    //         phoneNumber = phone.rawFullNumber.toString();
+                    //       });
+                    //     },
+                    //     loadFromJson: loadFromJson,
+                    //     dialogConfig: DialogConfig(
+                    //       backgroundColor: const Color(0xFF444448),
+                    //       searchBoxBackgroundColor: const Color(0xFF56565a),
+                    //       searchBoxIconColor: const Color(0xFFFAFAFA),
+                    //       countryItemHeight: 50,
+                    //       flatFlag: true,
+                    //       topBarColor: primaryColor,
+                    //       selectedItemColor: const Color(0xFF56565a),
+                    //       selectedIcon: const Padding(
+                    //         padding: EdgeInsets.only(left: 10),
+                    //         child:
+                    //             Icon(Icons.check_circle, color: primaryColor),
+                    //       ),
+                    //       textStyle: GoogleFonts.poppins(
+                    //         color: const Color(0xFFFAFAFA).withOpacity(0.7),
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w600,
+                    //       ),
+                    //       searchBoxTextStyle: GoogleFonts.poppins(
+                    //         color: const Color(0xFFFAFAFA).withOpacity(0.7),
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w600,
+                    //       ),
+                    //       titleStyle: GoogleFonts.poppins(
+                    //         color: const Color(0xFFFAFAFA),
+                    //         fontSize: 18,
+                    //         fontWeight: FontWeight.w700,
+                    //       ),
+                    //       searchBoxHintStyle: GoogleFonts.poppins(
+                    //         color: const Color(0xFFFAFAFA).withOpacity(0.7),
+                    //         fontSize: 12,
+                    //         fontWeight: FontWeight.w600,
+                    //       ),
+                    //     ),
+                    //     countryConfig: CountryConfig(
+                    //       decoration: BoxDecoration(
+                    //         borderRadius: BorderRadius.circular(16),
+                    //         color: whiteColor,
+                    //         border: Border.all(
+                    //             width: 2, color: primaryColor.withOpacity(0.2)),
+                    //         boxShadow: [
+                    //           BoxShadow(
+                    //             color: primaryColor.withOpacity(0.05),
+                    //             blurRadius: 10,
+                    //             offset: const Offset(0, 4),
+                    //           ),
+                    //         ],
+                    //       ),
+                    //       flatFlag: true,
+                    //       noFlag: false,
+                    //       flagSize: 28,
+                    //       textStyle: GoogleFonts.poppins(
+                    //         color: primaryColor,
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w600,
+                    //       ),
+                    //     ),
+                    //     validator: (number) {
+                    //       if (number.number.isEmpty) {
+                    //         return "The phone number cannot be left empty";
+                    //       }
+                    //       return null;
+                    //     },
+                    //     phoneConfig: PhoneConfig(
+                    //       focusedColor: primaryColor,
+                    //       enabledColor: Colors.grey.shade300,
+                    //       autoFocus: true,
+                    //       errorColor: redColor,
+                    //       labelStyle: null,
+                    //       labelText: null,
+                    //       floatingLabelStyle: null,
+                    //       focusNode: null,
+                    //       radius: 16,
+                    //       hintText: "eg: (+250) 000 000 000",
+                    //       borderWidth: 2,
+                    //       backgroundColor: Colors.transparent,
+                    //       decoration: null,
+                    //       popUpErrorText: true,
+                    //       showCursor: true,
+                    //       textInputAction: TextInputAction.done,
+                    //       autovalidateMode: AutovalidateMode.onUserInteraction,
+                    //       errorTextMaxLength: 2,
+                    //       errorPadding: const EdgeInsets.only(top: 14),
+                    //       errorStyle: GoogleFonts.poppins(
+                    //         color: redColor,
+                    //         fontSize: 12,
+                    //         height: 1,
+                    //       ),
+                    //       textStyle: GoogleFonts.poppins(
+                    //         color: primaryColor,
+                    //         fontSize: 16,
+                    //         fontWeight: FontWeight.w500,
+                    //       ),
+                    //       hintStyle: GoogleFonts.poppins(
+                    //         color: Colors.black.withOpacity(0.4),
+                    //         fontSize: 14,
+                    //         fontWeight: FontWeight.w400,
+                    //       ),
+                    //     ),
+                    //   ),
+                    // )
+                    //     .animate()
+                    //     .fadeIn(delay: 500.ms, duration: 600.ms)
+                    //     .slideX(begin: -0.2, end: 0),
+                    // Phone Input Form
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 20,
+                            offset: const Offset(0, 4),
                           ),
-                          textStyle: GoogleFonts.poppins(
-                            color: const Color(0xFFFAFAFA).withOpacity(0.7),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          searchBoxTextStyle: GoogleFonts.poppins(
-                            color: const Color(0xFFFAFAFA).withOpacity(0.7),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          titleStyle: GoogleFonts.poppins(
-                            color: const Color(0xFFFAFAFA),
-                            fontSize: 18,
-                            fontWeight: FontWeight.w700,
-                          ),
-                          searchBoxHintStyle: GoogleFonts.poppins(
-                            color: const Color(0xFFFAFAFA).withOpacity(0.7),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        countryConfig: CountryConfig(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            color: whiteColor,
-                            border: Border.all(
-                                width: 2, color: primaryColor.withOpacity(0.2)),
-                            boxShadow: [
-                              BoxShadow(
-                                color: primaryColor.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
+                        ],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20.0),
+                        child: Form(
+                          key: formKey,
+                          child: Column(
+                            children: [
+                              InternationalPhoneNumberInput(
+                                height: 60,
+                                controller: _phoneNumberController,
+                                // inputFormatters: const [],
+                                // formatter: MaskedInputFormatter('### ### ###'),
+                                initCountry: CountryCodeModel(
+                                    name: "Rwanda",
+                                    dial_code: "+250",
+                                    code: "RW"),
+                                betweenPadding: 12,
+                                onInputChanged: (phone) {
+                                  setState(() {
+                                    countryCode = phone.code;
+                                    phoneNumber =
+                                        phone.rawFullNumber.toString();
+                                  });
+                                },
+                                loadFromJson: loadFromJson,
+                                dialogConfig: DialogConfig(
+                                  backgroundColor: const Color(0xFF444448),
+                                  searchBoxBackgroundColor:
+                                      const Color(0xFF56565a),
+                                  searchBoxIconColor: const Color(0xFFFAFAFA),
+                                  countryItemHeight: 50,
+                                  flatFlag: true,
+                                  topBarColor: const Color(0xFF1B1C24),
+                                  selectedItemColor: const Color(0xFF56565a),
+                                  selectedIcon: const Padding(
+                                    padding: EdgeInsets.only(left: 10),
+                                    child: Icon(Icons.check_circle,
+                                        color: Colors.greenAccent),
+                                  ),
+                                  textStyle: GoogleFonts.poppins(
+                                      color: const Color(0xFFFAFAFA)
+                                          .withOpacity(0.7),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600),
+                                  searchBoxTextStyle: GoogleFonts.poppins(
+                                      color: const Color(0xFFFAFAFA)
+                                          .withOpacity(0.7),
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w600),
+                                  titleStyle: GoogleFonts.poppins(
+                                      color: const Color(0xFFFAFAFA),
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700),
+                                  searchBoxHintStyle: GoogleFonts.poppins(
+                                      color: const Color(0xFFFAFAFA)
+                                          .withOpacity(0.7),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600),
+                                ),
+                                countryConfig: CountryConfig(
+                                    decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        color: Colors.grey[50],
+                                        border: Border.all(
+                                            width: 1.5,
+                                            color: Colors.grey[300]!)),
+                                    flatFlag: true,
+                                    noFlag: false,
+                                    flagSize: 28,
+                                    textStyle: GoogleFonts.poppins(
+                                        color: Colors.black87,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500)),
+                                validator: (number) {
+                                  if (number.number.isEmpty) {
+                                    return "The phone number cannot be left empty";
+                                  }
+                                  return null;
+                                },
+                                phoneConfig: PhoneConfig(
+                                  focusedColor: primaryColor,
+                                  enabledColor: Colors.grey[300]!,
+                                  errorColor: redColor,
+                                  labelStyle: null,
+                                  labelText: null,
+                                  floatingLabelStyle: null,
+                                  focusNode: null,
+                                  radius: 12,
+                                  hintText: "xxx xxx xxx xxx",
+                                  borderWidth: 1.5,
+                                  backgroundColor: Colors.grey[50],
+                                  decoration: null,
+                                  popUpErrorText: true,
+                                  autoFocus: false,
+                                  showCursor: true,
+                                  textInputAction: TextInputAction.done,
+                                  autovalidateMode:
+                                      AutovalidateMode.onUserInteraction,
+                                  errorTextMaxLength: 2,
+                                  errorPadding: const EdgeInsets.only(top: 14),
+                                  errorStyle: GoogleFonts.poppins(
+                                      color: const Color(0xFFFF5494),
+                                      fontSize: 12,
+                                      height: 1),
+                                  textStyle: GoogleFonts.poppins(
+                                      color: Colors.black87,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500),
+                                  hintStyle: GoogleFonts.poppins(
+                                      color: Colors.black.withOpacity(0.4),
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w400),
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+
+                              // Terms and Conditions
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: primaryColor.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: primaryColor.withOpacity(0.1),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.verified_user_rounded,
+                                      color: primaryColor,
+                                      size: 28,
+                                    )
+                                        .animate(
+                                            onPlay: (controller) =>
+                                                controller.repeat())
+                                        .shimmer(
+                                            delay: 2000.ms, duration: 2000.ms),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            "By signing up, you agree to our",
+                                            style: GoogleFonts.poppins(
+                                                color: Colors.black87,
+                                                fontWeight: FontWeight.w400,
+                                                fontSize: 12),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Wrap(
+                                            spacing: 4,
+                                            children: [
+                                              Text(
+                                                "Terms of Service",
+                                                style: GoogleFonts.poppins(
+                                                    color: primaryColor,
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 12),
+                                              ),
+                                              Text(
+                                                "and",
+                                                style: GoogleFonts.poppins(
+                                                    color: Colors.black87,
+                                                    fontWeight: FontWeight.w400,
+                                                    fontSize: 12),
+                                              ),
+                                              Text(
+                                                "Privacy Policy",
+                                                style: GoogleFonts.poppins(
+                                                    color: primaryColor,
+                                                    fontWeight: FontWeight.w600,
+                                                    fontSize: 12),
+                                              ),
+                                            ],
+                                          )
+                                        ],
+                                      ),
+                                    )
+                                  ],
+                                ),
                               ),
                             ],
-                          ),
-                          flatFlag: true,
-                          noFlag: false,
-                          flagSize: 28,
-                          textStyle: GoogleFonts.poppins(
-                            color: primaryColor,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        validator: (number) {
-                          if (number.number.isEmpty) {
-                            return "The phone number cannot be left empty";
-                          }
-                          return null;
-                        },
-                        phoneConfig: PhoneConfig(
-                          focusedColor: primaryColor,
-                          enabledColor: Colors.grey.shade300,
-                          autoFocus: true,
-                          errorColor: redColor,
-                          labelStyle: null,
-                          labelText: null,
-                          floatingLabelStyle: null,
-                          focusNode: null,
-                          radius: 16,
-                          hintText: "eg: (+250) 000 000 000",
-                          borderWidth: 2,
-                          backgroundColor: Colors.transparent,
-                          decoration: null,
-                          popUpErrorText: true,
-                          showCursor: true,
-                          textInputAction: TextInputAction.done,
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                          errorTextMaxLength: 2,
-                          errorPadding: const EdgeInsets.only(top: 14),
-                          errorStyle: GoogleFonts.poppins(
-                            color: redColor,
-                            fontSize: 12,
-                            height: 1,
-                          ),
-                          textStyle: GoogleFonts.poppins(
-                            color: primaryColor,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          hintStyle: GoogleFonts.poppins(
-                            color: Colors.black.withOpacity(0.4),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w400,
                           ),
                         ),
                       ),
                     )
                         .animate()
-                        .fadeIn(delay: 500.ms, duration: 600.ms)
-                        .slideX(begin: -0.2, end: 0),
+                        .fadeIn(delay: 600.ms, duration: 500.ms)
+                        .slideY(begin: 0.2, end: 0, curve: Curves.easeOut),
                     const SizedBox(height: 50),
                     BlocConsumer<RegisterClientBloc, RegisterClientState>(
                       listener: (context, state) {

@@ -175,7 +175,7 @@ class _CancelRequestBottomSheetState extends State<CancelRequestBottomSheet> {
                     InkWell(
                       onTap: () {
                         setState(() {
-                          selectedReason = reason.kinyaDescription;
+                          selectedReason = reason.title;
                           if (!isOther) {
                             _customReasonController.clear();
                           }

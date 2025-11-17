@@ -20,8 +20,9 @@ class UpdateSentRequestStatusBloc
       } else if (event is HandleUpdateStatus) {
         emit(UpdateSentRequestStatusLaoding());
         MyRequestsModel updateSentRequestModel;
-        updateSentRequestModel = await sentRequestsService
-            .cancelSentRequestStatus(event.requestId, event.status, event.cancellationReason);
+        updateSentRequestModel =
+            await sentRequestsService.cancelSentRequestStatus(
+                event.requestId, event.status, event.cancellationReason);
         if (updateSentRequestModel.success) {
           emit(UpdateSentRequestStatusSuccess(
               updateSentRequestModel: updateSentRequestModel));

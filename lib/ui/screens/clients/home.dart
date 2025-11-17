@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:ui';
 
 import 'package:speed_ios/routes/routes.names.dart';
 import 'package:speed_ios/routes/routes.provider.dart';
@@ -10,7 +11,7 @@ import 'package:speed_ios/states/requests/create_request_bloc.dart';
 import 'package:speed_ios/utils/colors.dart';
 import 'package:speed_ios/utils/notifiers.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/foundation.dart';
+ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -28,11 +29,14 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../api/auth.service.dart';
 import '../../../api/location.service.dart';
 import '../../../connectivity/check.connectivity.dart';
+import '../../../model/active_request_model.dart';
 import '../../../model/available.driver/available.driver.on.map.model.dart';
 import '../../../states/available.driver.location/available_driver_location_bloc.dart';
 import '../../../states/client.profile.data/client_profile_bloc.dart';
-import '../../widgets/buttons/icon_button_normal.dart';
-import '../../widgets/buttons/icon_button_outlined.dart';
+import 'package:speed_ios/ui/screens/clients/cancel.request/cancel.screen.dart';
+
+import '../../../states/requests/active_request_bloc.dart';
+import '../../../states/requests/update/update_sent_request_status_bloc.dart';
 import '../../widgets/lists/item_favorite_address_widget.dart';
 
 class Home extends StatefulWidget {
@@ -52,6 +56,12 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   AvailableDriverLocationBloc _availableDriverLocationBloc =
       AvailableDriverLocationBloc(
           AvailableDriverLocationInitial(), LocationService());
+  ActiveRequestBloc _activeRequestBloc = ActiveRequestBloc(AuthService());
+
+    UpdateSentRequestStatusBloc updateSentRequestStatusBloc =
+      UpdateSentRequestStatusBloc(
+          UpdateSentRequestStatusInitial(), AuthService());
+
   NetworkUtils networkUtils = NetworkUtils();
   late AnimationController _refreshController;
 
@@ -76,6 +86,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
       userPhone = userMap['phone'];
       userId = userMap['id'];
     });
+
+    _checkActiveRequest();
   }
 
   @override
@@ -86,19 +98,139 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
+      updateSentRequestStatusBloc = BlocProvider.of<UpdateSentRequestStatusBloc>(context);
+
     createRequestBloc = BlocProvider.of<CreateRequestBloc>(context);
+    _activeRequestBloc = BlocProvider.of<ActiveRequestBloc>(context);
+
     motorbikerData = AvailableDriverData();
     profileBloc = BlocProvider.of<ClientProfileBloc>(context);
     _availableDriverLocationBloc =
         BlocProvider.of<AvailableDriverLocationBloc>(context);
     _getCurrentLocation();
     loadCountryCode();
+    _startPeriodicRefresh(); // Add this line
   }
 
+// Updated _checkActiveRequest method:
+
+  Future<void> _checkActiveRequest() async {
+    if (userId != null) {
+      debugPrint('Checking active request for user ID: $userId');
+      _activeRequestBloc.add(FetchActiveRequestEvent(clientId: userId!));
+    }
+  }
+
+// Add these state variables in _HomeState class
+  Timer? _refreshTimer;
+  String? currentRequestId;
+  String currentRequestStatus = '';
+  ActiveRequestData? activeRequest;
+  bool showRequestCard = false;
+
+// Add this in dispose()
   @override
   void dispose() {
     _refreshController.dispose();
+    _refreshTimer?.cancel(); // Add this line
+    // _activeRequestBloc.close();
     super.dispose();
+  }
+
+// NEW METHOD: Start periodic refresh every 1 minute
+  void _startPeriodicRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
+      if (mounted) {
+        _handleRefresh();
+        _checkActiveRequest();
+      }
+    });
+  }
+
+// NEW METHOD: Get status color
+  Color _getStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+      case 'SEARCHING_DRIVER':
+        return Colors.orange;
+      case 'APPROVED':
+      case 'ASSIGNED':
+      case 'ACCEPTED':
+        return Colors.blue;
+      case 'DRIVER_ARRIVING':
+        return Colors.purple;
+      case 'IN_PROGRESS':
+      case 'ONGOING':
+        return Colors.green;
+      case 'COMPLETED':
+        return Colors.teal;
+      case 'REJECTED':
+      case 'CANCELLED':
+      case 'NO_DRIVER_AVAILABLE':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+// NEW METHOD: Get status icon
+  IconData _getStatusIcon(String status) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+        return Icons.pending;
+      case 'SEARCHING_DRIVER':
+        return Icons.search;
+      case 'APPROVED':
+        return Icons.check_circle_outline;
+      case 'ASSIGNED':
+      case 'ACCEPTED':
+        return Icons.person_pin_circle;
+      case 'DRIVER_ARRIVING':
+        return Icons.directions_car;
+      case 'IN_PROGRESS':
+      case 'ONGOING':
+        return Icons.motorcycle;
+      case 'COMPLETED':
+        return Icons.check_circle;
+      case 'REJECTED':
+      case 'CANCELLED':
+        return Icons.cancel;
+      case 'NO_DRIVER_AVAILABLE':
+        return Icons.error_outline;
+      default:
+        return Icons.info_outline;
+    }
+  }
+
+// NEW METHOD: Get status message
+  String _getStatusMessage(String status) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+        return 'Your request is pending approval';
+      case 'SEARCHING_DRIVER':
+        return 'Searching for available driver...';
+      case 'APPROVED':
+        return 'Request approved! Finding driver...';
+      case 'ASSIGNED':
+        return 'Driver has been assigned to you';
+      case 'ACCEPTED':
+        return 'Driver accepted your request';
+      case 'DRIVER_ARRIVING':
+        return 'Driver is on the way to pick you up';
+      case 'IN_PROGRESS':
+      case 'ONGOING':
+        return 'Your ride is in progress';
+      case 'COMPLETED':
+        return 'Ride completed successfully';
+      case 'REJECTED':
+        return 'Request was rejected';
+      case 'CANCELLED':
+        return 'Ride was cancelled';
+      case 'NO_DRIVER_AVAILABLE':
+        return 'No driver available at the moment';
+      default:
+        return 'Status: $status';
+    }
   }
 
   checkIfNetworkIsAvailable() {
@@ -116,6 +248,34 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   void _handleRefresh() {
     _refreshController.forward(from: 0);
     _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+    _checkActiveRequest();
+  }
+
+  void _trackRide(BuildContext context, ActiveRequestData? request) {
+    if (request != null) {
+      debugPrint("Request ID: ${request.id}");
+      context.safeGoNamed(clientDirections, params: {
+        'requestId': request.id.toString(),
+        'originLocation': request.originLocation.toString(),
+        'destinationLocation': request.destinationLocation.toString(),
+        'clientNames':
+            '${request.client!.fname} ${request.client!.fname}',
+        'clientPhone': '${request.client!.phone}',
+      });
+    }
+  }
+
+  void _cancelRide() {
+    if (activeRequest != null) {
+      // cancelRequestBloc.add(CancelRequestEvent(requestId: activeRequest!.requestId!));
+    }
+  }
+
+  void _callDriver() {
+    if (activeRequest != null) {
+      FlutterPhoneDirectCaller.callNumber(
+          activeRequest!.motorBiker!.phone.toString());
+    }
   }
 
   Future<void> _getCurrentLocation() async {
@@ -654,8 +814,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
 
   Widget _buildDriverCard(
       AvailableDriverData item, double distance, int index) {
-    final isOnline = item.motorBiker!.status == 'ONLINE' ||
-        item.motorBiker!.status == 'ACTIVE';
+    final isOnline = item.motorBiker!.isActive == true;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -707,7 +866,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "${item.motorBiker!.fname ?? "------"} ${item.motorBiker!.lname ?? "------"}",
+                        "${item.motorBiker!.firstName ?? "------"} ${item.motorBiker!.lastName ?? "------"}",
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -1272,7 +1431,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                   ),
                 ),
                 Text(
-                  '${motorbike.motorBiker!.fname} ${motorbike.motorBiker!.lname}',
+                  '${motorbike.motorBiker!.firstName} ${motorbike.motorBiker!.lastName}',
                   style: GoogleFonts.poppins(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -1766,19 +1925,37 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                     ),
                   ),
                   actions: [
-                    IconButton(
-                      onPressed: _handleRefresh,
-                      icon: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: RotationTransition(
-                          turns: _refreshController,
-                          child: const Icon(Icons.sync, color: Colors.white),
-                        ),
-                      ),
+                    // Refresh button with BLoC loading indicator
+                    BlocBuilder<ActiveRequestBloc, ActiveRequestState>(
+                      builder: (context, state) {
+                        final isLoading = state is ActiveRequestLoading;
+
+                        return IconButton(
+                          onPressed: isLoading ? null : _handleRefresh,
+                          icon: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white
+                                  .withOpacity(isLoading ? 0.1 : 0.2),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : RotationTransition(
+                                    turns: _refreshController,
+                                    child: const Icon(Icons.sync,
+                                        color: Colors.white),
+                                  ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(width: 8),
                   ],
@@ -1862,6 +2039,24 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 10),
+
+                          BlocBuilder<ActiveRequestBloc, ActiveRequestState>(
+                            builder: (context, state) {
+                              if (state is ActiveRequestLoading &&
+                                  !showRequestCard) {
+                                // Show loading skeleton
+                                return _buildLoadingSkeleton();
+                              }
+
+                              if (state is ActiveRequestSuccess) {
+                                return _buildRequestStatusCard(
+                                    state.activeRequestModel);
+                              }
+
+                              return const SizedBox.shrink();
+                            },
+                          ),
+
                           // Section Header
                           Row(
                             children: [
@@ -2194,7 +2389,639 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
         );
   }
 
+  Widget _buildRequestStatusCard(ActiveRequestModel activeRequestModel) {
+    final activeRequest = activeRequestModel.data;
+    final currentRequestStatus = activeRequestModel.data?.status;
+    // if (!showRequestCard || activeRequest == null) {
+    //   return const SizedBox.shrink();
+    // }
+
+    final statusColor = _getStatusColor(currentRequestStatus!);
+    final statusIcon = _getStatusIcon(currentRequestStatus!);
+    final statusMessage = _getStatusMessage(currentRequestStatus!);
+    final isActive = [
+      'PENDING',
+      'SEARCHING_DRIVER',
+      'APPROVED',
+      'ASSIGNED',
+      'ACCEPTED',
+      'DRIVER_ARRIVING',
+      'IN_PROGRESS',
+      'ONGOING'
+    ].contains(currentRequestStatus.toUpperCase());
+
+    // Extract driver and client info
+    final driverName = activeRequest?.motorBiker?.firstName ??
+        '${activeRequest?.motorBiker?.fullName ?? ''}'.trim();
+    final driverPhone = activeRequest?.motorBiker?.phone ?? 'N/A';
+    final plateNumber = activeRequest?.motorBiker?.plateNumber ?? 'N/A';
+    final motorType = activeRequest?.motorType ??
+        activeRequest?.motorBiker?.motorType ??
+        activeRequest?.requestType ??
+        'N/A';
+    final driverStatus =
+        activeRequest?.motorBiker?.isActive ?? false ? 'ONLINE' : 'OFFLINE';
+    final priorityLevel = activeRequest?.priorityLevel ?? 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            // statusColor.withOpacity(0.03),
+            Colors.white,
+            Colors.white,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: statusColor.withOpacity(0.4),
+          width: 2.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: statusColor.withOpacity(0.25),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: Stack(
+          children: [
+            // Animated background pattern
+            Positioned(
+              top: -50,
+              right: -50,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      statusColor.withOpacity(0.1),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              )
+                  .animate(onPlay: (controller) => controller.repeat())
+                  .fadeIn(duration: 2000.ms)
+                  .then()
+                  .fadeOut(duration: 2000.ms),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Row
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              statusColor,
+                              statusColor.withOpacity(0.8),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: statusColor.withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Icon(
+                          statusIcon,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                      )
+                          .animate(onPlay: (controller) => controller.repeat())
+                          .shimmer(delay: 2000.ms, duration: 1500.ms),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Current Request',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey[600],
+                                letterSpacing: 1.2,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              currentRequestStatus.toUpperCase(),
+                              style: GoogleFonts.poppins(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: statusColor,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (isActive)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.green,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.green.withOpacity(0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                              )
+                                  .animate(
+                                      onPlay: (controller) =>
+                                          controller.repeat())
+                                  .fadeIn(duration: 1000.ms)
+                                  .then()
+                                  .fadeOut(duration: 1000.ms),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Active',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  // Divider
+                  Container(
+                    height: 1,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          statusColor.withOpacity(0.1),
+                          statusColor.withOpacity(0.3),
+                          statusColor.withOpacity(0.1),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Status Message
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.info_outline,
+                        size: 20,
+                        color: statusColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          statusMessage,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[700],
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Action Buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      if (isActive)
+                        Expanded(
+                            child: _buildActionButton(
+                                currentRequestStatus, statusColor, activeRequest!)),
+                      const SizedBox(width: 12),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ).animate().fadeIn(duration: 500.ms).slideY(
+        begin: -0.3, end: 0, duration: 500.ms, curve: Curves.easeOutBack);
+  }
+
+// NEW METHOD: Build loading skeleton for request card
+  Widget _buildLoadingSkeleton() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Colors.white.withOpacity(0.2),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ).animate(onPlay: (controller) => controller.repeat()).shimmer(
+                  duration: 1500.ms, color: Colors.white.withOpacity(0.3)),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    )
+                        .animate(onPlay: (controller) => controller.repeat())
+                        .shimmer(
+                            duration: 1500.ms,
+                            color: Colors.white.withOpacity(0.3)),
+                    const SizedBox(height: 8),
+                    Container(
+                      width: 180,
+                      height: 20,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                    )
+                        .animate(onPlay: (controller) => controller.repeat())
+                        .shimmer(
+                            duration: 1500.ms,
+                            color: Colors.white.withOpacity(0.3)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            height: 1,
+            color: Colors.white.withOpacity(0.1),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+          )
+              .animate(onPlay: (controller) => controller.repeat())
+              .shimmer(duration: 1500.ms, color: Colors.white.withOpacity(0.3)),
+        ],
+      ),
+    ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
+  }
+
+  Widget _buildActionButton(String status, Color statusColor, ActiveRequestData request) {
+    switch (status.toUpperCase()) {
+      case "PENDING":
+      case "SEARCHING_DRIVER":
+        return _ActionButton(
+          icon: Icons.refresh,
+          label: "Refresh",
+          color: statusColor,
+          request: request,
+          onPressed: _handleRefresh,
+        );
+
+      case "APPROVED":
+        return BlocConsumer<UpdateSentRequestStatusBloc,
+            UpdateSentRequestStatusState>(
+          listener: (context, state) {
+            if (state is UpdateSentRequestStatusSuccess) {
+              showSuccessAlert(
+                state.updateSentRequestModel.message.toString(),
+                context,
+              );
+              _handleRefresh();
+            }
+            if (state is UpdateSentRequestStatusError) {
+              showErrorAlert(state.message.toString(), context);
+            }
+          },
+          builder: (context, state) {
+            return _ActionButton(
+              icon: Icons.cancel_outlined,
+              label: 'Cancel',
+              color: redColor,
+              request: request,
+              onPressed: () {
+                _showCancelBottomSheet(context, request.id!.toInt());
+              },
+            );
+          },
+        );
+
+      case "ASSIGNED":
+      case "ACCEPTED":
+      case "DRIVER_ARRIVING":
+        return _ActionButton(
+          icon: Icons.call,
+          label: "Call Driver",
+          color: Colors.green,
+          request: request,
+          onPressed: _callDriver,
+        );
+
+      case "IN_PROGRESS":
+      case "ONGOING":
+        return _ActionButton(
+          icon: Icons.location_searching_rounded,
+          label: "Track Ride",
+          color: Colors.orange,
+          request: request,
+          onPressed: () => _trackRide(context, request),
+        );
+
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+    // Add this new method to show the cancel bottom sheet
+  void _showCancelBottomSheet(BuildContext context, int requestId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      builder: (BuildContext context) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: CancelRequestBottomSheet(
+            onConfirmCancel: (String reason) {
+              // Show final confirmation dialog
+              _showFinalConfirmation(context, requestId, reason);
+            },
+          ),
+        );
+      },
+    );
+  }
+
+// Add this method for final confirmation
+  void _showFinalConfirmation(
+      BuildContext context, int requestId, String reason) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.red,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Confirm Cancellation',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+            ],
+          ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.2, end: 0),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Are you sure you want to cancel this request?',
+                style: GoogleFonts.poppins(
+                  fontWeight: FontWeight.w400,
+                  fontSize: 15,
+                  color: Colors.grey[700],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Reason:',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      reason,
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ).animate().fadeIn(duration: 300.ms, delay: 100.ms),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text(
+                'Go Back',
+                style: GoogleFonts.poppins(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ),
+            BlocBuilder<UpdateSentRequestStatusBloc,
+                UpdateSentRequestStatusState>(
+              builder: (context, state) {
+                final isLoading = state is UpdateSentRequestStatusLaoding;
+
+                return ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 0,
+                  ),
+                  onPressed: isLoading
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                          // Call the bloc to cancel the request
+                          updateSentRequestStatusBloc.add(
+                            HandleUpdateStatus(
+                              requestId: requestId.toString(),
+                              status: 'CANCELLED',
+                              cancellationReason: reason,
+                            ),
+                          );
+                        },
+                  child: isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : Text(
+                          'Yes, Cancel',
+                          style: GoogleFonts.poppins(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                );
+              },
+            ),
+          ]
+              .animate(interval: 50.ms)
+              .fadeIn(duration: 200.ms, delay: 200.ms)
+              .slideX(begin: 0.2, end: 0),
+        );
+      },
+    );
+  }
+
   void onBackPress() {
     context.safePop();
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final ActiveRequestData request;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.request,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 18),
+      label: Text(
+        label,
+        style: GoogleFonts.poppins(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: color,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: color),
+        ),
+        elevation: 0,
+      ),
+    );
   }
 }

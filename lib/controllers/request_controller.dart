@@ -1,107 +1,155 @@
 import 'dart:convert';
 import 'package:speed_ios/model/my.requests.model.dart';
-import 'package:speed_ios/model/received.sent.requests.model.dart';
-import 'package:speed_ios/utils/notifiers.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:intl/intl.dart'; // For date formatting
+import 'package:intl/intl.dart';
+
+import '../model/received.sent.requests.model.dart';
 
 class RequestsRepository {
-  Future<MyRequestsModel> dispatchingRequest(
-      int motorBikerId,
-      int clientId,
-      String requestType,
-      DateTime requestedTime,
-      String originLocation,
-      String destinationLocation,
-      String status) async {
+  final http.Client? httpClient;
+  static const String _defaultErrorMessage =
+      'Something went wrong, please try again, or call support@speed.tz!';
+
+  RequestsRepository({http.Client? client})
+      : httpClient = client ?? http.Client();
+
+  String get _baseUrl => dotenv.get('mainUrl', fallback: '');
+
+  /// Creates a new dispatching request
+  Future<MyRequestsModel> dispatchingRequest({
+    required int motorBikerId,
+    required int clientId,
+    required String requestType,
+    required DateTime requestedTime,
+    required String originLocation,
+    required String destinationLocation,
+    required String status,
+  }) async {
     // Format the DateTime to 'yyyy-MM-ddTHH:mm:ss'
-    String formattedDate =
+    final String formattedRequestedTime =
         DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(requestedTime);
-    String now = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(DateTime.now());
+    final String now =
+        DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(DateTime.now());
 
     // Build the request body
-    var requestBody = {
+    final Map<String, dynamic> requestBody = {
       'motorBiker': {'id': motorBikerId},
       'client': {'id': clientId},
       'requestType': requestType,
-      'requestedTime': formattedDate,
-      'createdAt': now, // Set createdAt to the current date and time
-      'updatedAt': now, // Set updatedAt to the current date and time
+      'requestedTime': formattedRequestedTime,
+      'createdAt': now,
+      'updatedAt': now,
       'originLocation': originLocation,
       'destinationLocation': destinationLocation,
-      'status': status
+      'status': status,
     };
 
     try {
-      Map<String, String> headers = {'Content-Type': 'application/json'};
-      final url = Uri.parse('${dotenv.get('mainUrl')}/requests}');
-      var response = await http.post(url,
-          headers: headers, body: json.encode(requestBody));
+      final Map<String, String> headers = {'Content-Type': 'application/json'};
+      final Uri url = Uri.parse('$_baseUrl/requests');
 
-      Map<String, dynamic> results = jsonDecode(response.body);
+      final http.Response response = await httpClient!.post(
+        url,
+        headers: headers,
+        body: json.encode(requestBody),
+      );
+
+      final Map<String, dynamic> results = jsonDecode(response.body);
+
+      if (kDebugMode) {
+        print('Request Response [${response.statusCode}]: $results');
+      }
 
       if (response.statusCode == 200) {
-        MyRequestsModel myRequestsModel = MyRequestsModel.fromJson(results);
-        if (kDebugMode) {
-          print("TEST 1 $results");
-        }
-        return myRequestsModel;
+        return MyRequestsModel.fromJson(results);
       } else if (response.statusCode == 400 || response.statusCode == 500) {
-        MyRequestsModel myRequestsModel = MyRequestsModel.fromJson(results);
-        if (kDebugMode) {
-          print("TEST 1 $results");
-        }
-        return myRequestsModel;
+        return MyRequestsModel.fromJson(results);
       } else {
-        String message =
-            'Something went wrong, please try again, or call support@speed.tz!';
-        if (kDebugMode) {
-          print("TEST 3 $message");
-        }
-        return MyRequestsModel(success: false, message: message, data: null);
+        return MyRequestsModel(
+          success: false,
+          message: _defaultErrorMessage,
+          data: null,
+        );
       }
+    } on FormatException catch (e) {
+      if (kDebugMode) {
+        print('JSON Format Error: $e');
+      }
+      return MyRequestsModel(
+        success: false,
+        message: 'Invalid response format from server',
+        data: null,
+      );
     } catch (e) {
-      return MyRequestsModel(success: false, message: e.toString(), data: null);
+      if (kDebugMode) {
+        print('Request Error: $e');
+      }
+      return MyRequestsModel(
+        success: false,
+        message: 'Network error: ${e.toString()}',
+        data: null,
+      );
     }
   }
 
+  /// Fetches user sent requests by client ID
   Future<UserSentRequestsModel> dispatchingFetchRequest(
-    String clientId,
-  ) async {
+    String clientId, {
+    int page = 0,
+    int size = 20,
+  }) async {
     try {
-      var response = await http.get(
-        Uri.parse('${dotenv.get('mainUrl')}/requests/client/$clientId'),
-        headers: {
-          "Content-type": "application/json",
-        },
+      final Uri url = Uri.parse(
+        '$_baseUrl/requests/client/$clientId?page=$page&size=$size',
       );
 
-      if (response.statusCode == 200) {
-        Map<String, dynamic> results = jsonDecode(response.body);
-        UserSentRequestsModel userSentRequestsModel =
-            UserSentRequestsModel.fromJson(results);
+      final http.Response response = await httpClient!.get(
+        url,
+        headers: {'Content-Type': 'application/json'},
+      );
 
-        return userSentRequestsModel;
-      } else if (response.statusCode == 400 || response.statusCode == 500) {
-        Map<String, dynamic> results = jsonDecode(response.body);
-        UserSentRequestsModel userSentRequestsModel =
-            UserSentRequestsModel.fromJson(results);
-        if (kDebugMode) {
-          print("TEST 2 $results");
-        }
-        return userSentRequestsModel;
-      } else {
-        String message =
-            'Something went wrong, please try again, or call support@speed.tz!';
-        return UserSentRequestsModel(
-            success: false, message: message, data: null);
+      final Map<String, dynamic> results = jsonDecode(response.body);
+
+      if (kDebugMode) {
+        print('Fetch Requests Response [${response.statusCode}]: $results');
       }
-    } catch (e) {
+
+      if (response.statusCode == 200) {
+        return UserSentRequestsModel.fromJson(results);
+      } else if (response.statusCode == 400 || response.statusCode == 500) {
+        return UserSentRequestsModel.fromJson(results);
+      } else {
+        return UserSentRequestsModel(
+          success: false,
+          message: _defaultErrorMessage,
+          data: null,
+        );
+      }
+    } on FormatException catch (e) {
+      if (kDebugMode) {
+        print('JSON Format Error: $e');
+      }
       return UserSentRequestsModel(
-          success: false, message: e.toString(), data: null);
+        success: false,
+        message: 'Invalid response format from server',
+        data: null,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('Fetch Requests Error: $e');
+      }
+      return UserSentRequestsModel(
+        success: false,
+        message: 'Network error: ${e.toString()}',
+        data: null,
+      );
     }
+  }
+
+  /// Dispose resources
+  void dispose() {
+    httpClient?.close();
   }
 }

@@ -15,6 +15,7 @@ import 'package:speed_ios/model/car.category.new.model.dart';
 import 'package:speed_ios/model/user.login.model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../model/active_request_model.dart';
 import '../model/update.profile.model.dart';
 import '../model/verify.otp.model.dart';
 
@@ -260,15 +261,46 @@ class AuthService {
     }
   }
 
-  Future<MyRequestsModel> updateSentRequestStatus(
-      String requestId, String status) async {
+  Future<MyRequestsModel> cancelSentRequestStatus(
+      String requestId, String status, String? cancellationReason) async {
     Map<String, String> headers = {'Content-Type': 'application/json'};
-    var response = await http.put(
-        Uri.parse('${dotenv.get('mainUrl')}/requests/$requestId'),
-        headers: headers,
-        body: json.encode({'status': status.toString()}));
+
+    // Build query parameters
+    Map<String, String> queryParams = {
+      'cancelledBy': 'CLIENT',
+    };
+
+    // Add cancellation reason if provided
+    if (cancellationReason != null && cancellationReason.isNotEmpty) {
+      queryParams['cancellationReason'] = cancellationReason;
+    }
+
+    // Build URI with query parameters
+    Uri uri = Uri.parse('${dotenv.get('mainUrl')}/requests/$requestId/cancel')
+        .replace(queryParameters: queryParams);
+
+    // Log request details
+    print('=== REQUEST ===');
+    print('Method: PATCH');
+    print('URL: $uri');
+    print('Headers: $headers');
+    print('Query Params: $queryParams');
+    print('===============\n');
+
+    var response = await http.patch(
+      uri,
+      headers: headers,
+    );
+
+    // Log response details
+    print('=== RESPONSE ===');
+    print('Status Code: ${response.statusCode}');
+    print('Headers: ${response.headers}');
+    print('Body: ${response.body}');
+    print('================\n');
 
     Map<String, dynamic> results = jsonDecode(response.body);
+
     if (response.statusCode == 200) {
       MyRequestsModel updateSentRequestModel =
           MyRequestsModel.fromJson(results);
@@ -347,60 +379,42 @@ class AuthService {
     }
   }
 
+  Future<ActiveRequestModel> getActiveRequest(int clientId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken');
 
-  Future<MyRequestsModel> cancelSentRequestStatus(
-      String requestId, String status, String? cancellationReason) async {
-    Map<String, String> headers = {'Content-Type': 'application/json'};
+      final response = await http.get(
+        Uri.parse('${dotenv.get('mainUrl')}/requests/active/$clientId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          if (token != null) 'Authorization': 'Bearer $token',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
 
-    // Build query parameters
-    Map<String, String> queryParams = {
-      'cancelledBy': 'CLIENT',
-    };
-
-    // Add cancellation reason if provided
-    if (cancellationReason != null && cancellationReason.isNotEmpty) {
-      queryParams['cancellationReason'] = cancellationReason;
-    }
-
-    // Build URI with query parameters
-    Uri uri = Uri.parse('${dotenv.get('mainUrl')}/requests/$requestId/cancel')
-        .replace(queryParameters: queryParams);
-
-    // Log request details
-    print('=== REQUEST ===');
-    print('Method: PATCH');
-    print('URL: $uri');
-    print('Headers: $headers');
-    print('Query Params: $queryParams');
-    print('===============\n');
-
-    var response = await http.patch(
-      uri,
-      headers: headers,
-    );
-
-    // Log response details
-    print('=== RESPONSE ===');
-    print('Status Code: ${response.statusCode}');
-    print('Headers: ${response.headers}');
-    print('Body: ${response.body}');
-    print('================\n');
-
-    Map<String, dynamic> results = jsonDecode(response.body);
-
-    if (response.statusCode == 200) {
-      MyRequestsModel updateSentRequestModel =
-          MyRequestsModel.fromJson(results);
-      return updateSentRequestModel;
-    } else if (response.statusCode == 400) {
-      MyRequestsModel updateSentRequestModel =
-          MyRequestsModel.fromJson(results);
-      return updateSentRequestModel;
-    } else {
-      MyRequestsModel updateSentRequestModel =
-          MyRequestsModel.fromJson(results);
-      return updateSentRequestModel;
+      if (response.statusCode == 200) {
+        final jsonData = jsonDecode(response.body);
+        debugPrint(jsonData.toString());
+        return ActiveRequestModel.fromJson(jsonData);
+      } else if (response.statusCode == 404) {
+        // No active request found
+        return ActiveRequestModel(
+          success: true,
+          message: 'No active request',
+          data: null,
+        );
+      } else {
+        throw Exception(
+            'Failed to load active request: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Error fetching active request: $e');
     }
   }
-
 }

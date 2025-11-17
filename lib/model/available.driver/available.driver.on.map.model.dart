@@ -1,122 +1,228 @@
 class AvailableDriverOnMapModel {
-  String? message;
-  bool  success = false;
-  List<AvailableDriverData>? data;
+  final String? message;
+  final bool success;
+  final List<AvailableDriverData> data; // Non-nullable: always [] if empty/null
 
-  AvailableDriverOnMapModel({this.message,required this.success, this.data});
+  const AvailableDriverOnMapModel({
+    required this.message,
+    required this.success,
+    required this.data,
+  });
 
-  AvailableDriverOnMapModel.fromJson(Map<String, dynamic> json) {
-    message = json['message'];
-    success = json['success'] ?? false;
-    if (json['data'] != null) {
-      data = <AvailableDriverData>[];
-      json['data'].forEach((v) {
-        data!.add(AvailableDriverData.fromJson(v));
-      });
+  factory AvailableDriverOnMapModel.fromJson(Map<String, dynamic> json) {
+    return AvailableDriverOnMapModel(
+      message: json['message'] as String?,
+      success: json['success'] as bool? ?? false,
+      data: _parseData(json['data']),
+    );
+  }
+
+  static List<AvailableDriverData> _parseData(dynamic dataJson) {
+    if (dataJson == null) {
+      print('Info: data is null, defaulting to empty list');
+      return <AvailableDriverData>[];
+    }
+
+    if (dataJson is List) {
+      // Standard: List of maps
+      return dataJson
+          .where((item) => item is Map<String, dynamic>) // Filter invalid
+          .cast<Map<String, dynamic>>()
+          .map((item) => AvailableDriverData.fromJson(item))
+          .toList();
+    } else if (dataJson is Map<String, dynamic>) {
+      // Fallback: Single object → list of 1
+      print('Info: Converted single Map to List for data');
+      return <AvailableDriverData>[AvailableDriverData.fromJson(dataJson)];
+    } else {
+      // Unexpected type
+      print('Warning: Unexpected type for data: ${dataJson.runtimeType}. Defaulting to empty list.');
+      return <AvailableDriverData>[];
     }
   }
 
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = <String, dynamic>{};
-    data['message'] = message;
-    data['success'] = success;
-    if (this.data != null) {
-      data['data'] = this.data!.map((v) => v.toJson()).toList();
+    final Map<String, dynamic> dataMap = <String, dynamic>{};
+    dataMap['message'] = message;
+    dataMap['success'] = success;
+    if (data.isNotEmpty) {
+      dataMap['data'] = data.map((v) => v.toJson()).toList();
     }
-    return data;
+    return dataMap;
   }
+
+  @override
+  String toString() => 'AvailableDriverOnMapModel(success: $success, dataLength: ${data.length}, message: $message)';
 }
 
 class AvailableDriverData {
-  int? id;
-  MotorBiker? motorBiker;
-  String? currentLocationName;
-  double? longitude;
-  double? latitude;
-  double? price;
-  String? paymentStatus;
-  String? requestedTime;
+  final int? id;
+  final MotorBiker? motorBiker;
+  final String? currentLocationName;
+  final double? longitude;
+  final double? latitude;
+  final double? price; // Changed from int? to double?
+  final String? paymentStatus;
+  final String? requestedTime;
 
-  AvailableDriverData(
-      {this.id,
-      this.motorBiker,
-      this.currentLocationName,
-      this.longitude,
-      this.latitude,
-      this.price,
-      this.paymentStatus,
-      this.requestedTime});
+  const AvailableDriverData({
+    this.id,
+    this.motorBiker,
+    this.currentLocationName,
+    this.longitude,
+    this.latitude,
+    this.price,
+    this.paymentStatus,
+    this.requestedTime,
+  });
 
-  AvailableDriverData.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    motorBiker = json['motorBiker'] != null
-        ? MotorBiker.fromJson(json['motorBiker'])
-        : null;
-    currentLocationName = json['currentLocationName'];
-    longitude = json['longitude'];
-    latitude = json['latitude'];
-    price = json['price'];
-    paymentStatus = json['paymentStatus'];
-    requestedTime = json['requestedTime'];
+  factory AvailableDriverData.fromJson(Map<String, dynamic> json) {
+    return AvailableDriverData(
+      id: json['id'] as int?,
+      motorBiker: json['motorBiker'] != null
+          ? MotorBiker.fromJson(json['motorBiker'] as Map<String, dynamic>)
+          : null,
+      currentLocationName: _fromJsonString(json['currentLocationName']),
+      longitude: _toDouble(json['longitude']),
+      latitude: _toDouble(json['latitude']),
+      price: _toDouble(json['price']), // Use _toDouble instead of casting to int
+      paymentStatus: _fromJsonString(json['paymentStatus']),
+      requestedTime: _fromJsonString(json['requestedTime']),
+    );
   }
 
+  // Helper: Converts "null" string to actual null
+  static String? _fromJsonString(dynamic value) {
+    if (value == null) return null;
+    if (value is! String) return value.toString();
+    return (value.toLowerCase() == 'null') ? null : value;
+  }
+
+  // Helper: Safe double conversion
+  static double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  // Optional: DateTime parser for requestedTime
+  DateTime? get requestedDateTime => requestedTime != null
+      ? DateTime.tryParse(requestedTime!)
+      : null;
+
+  // Optional: Get price as int if you need it
+  int? get priceAsInt => price?.toInt();
+
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = <String, dynamic>{};
-    data['id'] = id;
+    final Map<String, dynamic> dataMap = <String, dynamic>{};
+    dataMap['id'] = id;
     if (motorBiker != null) {
-      data['motorBiker'] = motorBiker!.toJson();
+      dataMap['motorBiker'] = motorBiker!.toJson();
     }
-    data['currentLocationName'] = currentLocationName;
-    data['longitude'] = longitude;
-    data['latitude'] = latitude;
-    data['price'] = price;
-    data['paymentStatus'] = paymentStatus;
-    data['requestedTime'] = requestedTime;
-    return data;
+    dataMap['currentLocationName'] = currentLocationName;
+    dataMap['longitude'] = longitude;
+    dataMap['latitude'] = latitude;
+    dataMap['price'] = price;
+    dataMap['paymentStatus'] = paymentStatus;
+    dataMap['requestedTime'] = requestedTime;
+    return dataMap;
   }
+
+  @override
+  String toString() => 'AvailableDriverData(id: $id, motorBiker: ${motorBiker?.fullName}, location: $currentLocationName, price: $price)';
 }
-
 class MotorBiker {
-  int? id;
-  String? motorType;
-  String? fname;
-  String? lname;
-  String? phone;
-  String? plateNumber;
-  String? numeroChase;
-  String? status;
+  final int? id;
+  final String? motorType;
+  final String? firstName;
+  final String? lastName;
+  final String? phone;
+  final String? plateNumber;
+  final String? chassisNumber;
+  final String? vestNumber;
+  final String? status;
+  final String? deviceToken;
+  final bool? speedDriverAccess;
+  final bool? isActive;
+  final String? createdAt;
+  final String? updatedAt;
+  final String? fullName;
 
-  MotorBiker(
-      {this.id,
-      this.motorType,
-      this.fname,
-      this.lname,
-      this.phone,
-      this.plateNumber,
-      this.numeroChase,
-      this.status});
+  const MotorBiker({
+    this.id,
+    this.motorType,
+    this.firstName,
+    this.lastName,
+    this.phone,
+    this.plateNumber,
+    this.chassisNumber,
+    this.vestNumber,
+    this.status,
+    this.deviceToken,
+    this.speedDriverAccess,
+    this.isActive,
+    this.createdAt,
+    this.updatedAt,
+    this.fullName,
+  });
 
-  MotorBiker.fromJson(Map<String, dynamic> json) {
-    id = json['id'];
-    motorType = json['motorType'];
-    fname = json['fname'];
-    lname = json['lname'];
-    phone = json['phone'];
-    plateNumber = json['plateNumber'];
-    numeroChase = json['numeroChase'];
-    status = json['status'];
+  factory MotorBiker.fromJson(Map<String, dynamic> json) {
+    return MotorBiker(
+      id: json['id'] as int?,
+      motorType: _fromJsonString(json['motorType']),
+      firstName: _fromJsonString(json['firstName']),
+      lastName: _fromJsonString(json['lastName']),
+      phone: _fromJsonString(json['phone']),
+      plateNumber: _fromJsonString(json['plateNumber']),
+      chassisNumber: _fromJsonString(json['chassisNumber']),
+      vestNumber: _fromJsonString(json['vestNumber']),
+      status: _fromJsonString(json['status']),
+      deviceToken: _fromJsonString(json['deviceToken']),
+      speedDriverAccess: json['speedDriverAccess'] as bool?,
+      isActive: json['isActive'] as bool?,
+      createdAt: _fromJsonString(json['createdAt']),
+      updatedAt: _fromJsonString(json['updatedAt']),
+      fullName: _fromJsonString(json['fullName']),
+    );
   }
+
+  static String? _fromJsonString(dynamic value) {
+    if (value == null) return null;
+    if (value is! String) return value.toString();
+    return (value.toLowerCase() == 'null') ? null : value;
+  }
+
+  // Optional: DateTime parsers
+  DateTime? get createdDateTime => createdAt != null
+      ? DateTime.tryParse(createdAt!)
+      : null;
+
+  DateTime? get updatedDateTime => updatedAt != null
+      ? DateTime.tryParse(updatedAt!)
+      : null;
 
   Map<String, dynamic> toJson() {
-    final Map<String, dynamic> data = <String, dynamic>{};
-    data['id'] = id;
-    data['motorType'] = motorType;
-    data['fname'] = fname;
-    data['lname'] = lname;
-    data['phone'] = phone;
-    data['plateNumber'] = plateNumber;
-    data['numeroChase'] = numeroChase;
-    data['status'] = status;
-    return data;
+    final Map<String, dynamic> dataMap = <String, dynamic>{};
+    dataMap['id'] = id;
+    dataMap['motorType'] = motorType;
+    dataMap['firstName'] = firstName;
+    dataMap['lastName'] = lastName;
+    dataMap['phone'] = phone;
+    dataMap['plateNumber'] = plateNumber;
+    dataMap['chassisNumber'] = chassisNumber;
+    dataMap['vestNumber'] = vestNumber;
+    dataMap['status'] = status;
+    dataMap['deviceToken'] = deviceToken;
+    dataMap['speedDriverAccess'] = speedDriverAccess;
+    dataMap['isActive'] = isActive;
+    dataMap['createdAt'] = createdAt;
+    dataMap['updatedAt'] = updatedAt;
+    dataMap['fullName'] = fullName;
+    return dataMap;
   }
+
+  @override
+  String toString() => 'MotorBiker(id: $id, fullName: $fullName, phone: $phone, status: $status)';
 }

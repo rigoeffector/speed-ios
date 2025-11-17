@@ -7,11 +7,11 @@ import 'package:speed_ios/ui/screens/clients/verify.phonenumber.dart';
 import 'package:speed_ios/ui/screens/clients/rate_driver.dart';
 import 'package:speed_ios/ui/screens/login.dart';
 import 'package:speed_ios/ui/screens/splash.screen.dart';
+import 'package:speed_ios/ui/screens/verify.otp.dart';
 import 'package:speed_ios/ui/screens/settings.dart';
 import 'package:speed_ios/ui/screens/welcome.dart';
 import 'package:speed_ios/ui/screens/clients/home.dart';
 import 'package:speed_ios/ui/screens/clients/list.my.requests.dart';
-import 'package:speed_ios/ui/screens/clients/cancel.request/cancel.screen.dart';
 import 'package:speed_ios/ui/screens/clients/favorite_pickup_location.dart';
 import 'package:speed_ios/ui/screens/clients/home_client.dart';
 
@@ -65,7 +65,17 @@ class AppNavigation {
             name: verify,
             builder: (context, state) => VerifyPhoneNumber(key: state.pageKey),
           ),
-        
+          GoRoute(
+            path: '/verifyOtp',
+            name: verifyOtp,
+            builder: (context, state) => VerifyOtpScreen(
+              key: state.pageKey,
+              type: state.uri.queryParameters['type'],
+              otp: state.uri.queryParameters['otp'],
+              phone: state.uri.queryParameters['phone'],
+              clientId: state.uri.queryParameters['clientId'],
+            ),
+          ),
           GoRoute(
             path: '/clientProfile',
             name: clientProfile,
@@ -137,7 +147,18 @@ class AppNavigation {
               clientId: state.uri.queryParameters['clientId'],
             ),
           ),
-    
+          // GoRoute(
+          //   path: '/cancelRide',
+          //   name: cancelRide,
+          //   builder: (context, state) => CancelRequestScreen(
+          //     key: state.pageKey,
+          //     tripId: state.uri.queryParameters['tripId'],
+          //     clientId: state.uri.queryParameters['clientId'],
+          //     driverId: state.uri.queryParameters['driverId'],
+          //     sourceLoc: state.uri.queryParameters['sourceLoc'],
+          //     destinationLoc: state.uri.queryParameters['destinationLoc'],
+          //   ),
+          // ),
         ],
       ),
     ],

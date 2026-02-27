@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_google_places/flutter_google_places.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:geocoder2/geocoder2.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_api_headers/google_api_headers.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -115,25 +114,7 @@ class _FavoritePickUpLocationState extends State<FavoritePickUpLocation> {
     Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high);
     currentPosition = position;
-
-    var data = await Geocoder2.getDataFromCoordinates(
-        latitude: currentPosition!.latitude,
-        longitude: currentPosition!.longitude,
-        googleMapApiKey: dotenv.get('apiKey'));
-
-    if (kDebugMode) {
-      print("/////////// $currentPosition  //////////////");
-    }
-    if (kDebugMode) {
-      print(data.address);
-    }
-    setState(() {
-      myCurrentAddress = data.address;
-      sLat = data.latitude;
-      sLng = data.longitude;
-      isLocationAvailable = true;
-      isLoading = false;
-    });
+ 
   }
 
   @override
@@ -346,7 +327,8 @@ class _FavoritePickUpLocationState extends State<FavoritePickUpLocation> {
                             onPressed: () {
                               setState(() {
                                 isLoading = true;
-                                locatePosition();
+                          
+                          
                               });
                             },
                             child: const Row(

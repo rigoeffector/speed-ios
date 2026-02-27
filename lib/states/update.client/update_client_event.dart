@@ -14,10 +14,12 @@ class HandleUpdateClientInformation extends UpdateClientEvent {
   String clientId;
   String fname;
   String lname;
+  String deviceToken;
 
   HandleUpdateClientInformation({
     required this.clientId,
     required this.fname,
     required this.lname,
+    required this.deviceToken,
   });
 }

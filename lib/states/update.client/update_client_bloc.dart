@@ -21,6 +21,7 @@ class UpdateClientBloc extends Bloc<UpdateClientEvent, UpdateClientState> {
             event.clientId,
             event.fname,
             event.lname,
+            event.deviceToken,
           );
           if (updateClientInfoModel.success) {
             emit(UpdateClientSuccess(

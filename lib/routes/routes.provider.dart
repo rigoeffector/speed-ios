@@ -63,7 +63,10 @@ class AppNavigation {
           GoRoute(
             path: '/verify',
             name: verify,
-            builder: (context, state) => VerifyPhoneNumber(key: state.pageKey),
+            builder: (context, state) => VerifyPhoneNumber(
+              key: state.pageKey,
+              deviceToken: state.uri.queryParameters['deviceToken'],
+              ),
           ),
           GoRoute(
             path: '/verifyOtp',
@@ -82,6 +85,7 @@ class AppNavigation {
             builder: (context, state) => ClientProfileScreen(
               key: state.pageKey,
               clientId: state.uri.queryParameters['clientId'],
+                deviceToken: state.uri.queryParameters['deviceToken'],
             ),
           ),
           GoRoute(
@@ -113,17 +117,19 @@ class AppNavigation {
               ),
             ],
           ),
-          GoRoute(
+            GoRoute(
             path: '/clientDirections',
             name: clientDirections,
-            builder: (context, state) => ClientDirections(
+            builder: (context, state) => AdvancedClientTrackingScreen(
               key: state.pageKey,
               requestId: state.uri.queryParameters['requestId'],
-              originLocation: state.uri.queryParameters['originLocation'],
-              destinationLocation:
-                  state.uri.queryParameters['destinationLocation'],
               clientNames: state.uri.queryParameters['clientNames'],
               clientPhone: state.uri.queryParameters['clientPhone'],
+                destinationLocation:
+                  state.uri.queryParameters['destinationLocation'],
+              originLocation: state.uri.queryParameters['originLocation'],
+              driverName: state.uri.queryParameters['driverName'],
+              driverPhone: state.uri.queryParameters['driverPhone'],
             ),
           ),
           GoRoute(

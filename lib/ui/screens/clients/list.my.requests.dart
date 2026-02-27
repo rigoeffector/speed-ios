@@ -57,33 +57,47 @@ class _RequestsScreenState extends State<RequestsScreen>
     super.dispose();
   }
 
-  Color statusStr(String status) {
-    if (status == 'APPROVED') {
-      return primaryColor;
-    } else if (status == 'REJECTED') {
-      return Colors.red;
-    } else if (status == 'PENDING') {
-      return Colors.orange;
-    } else if (status == 'CANCELLED') {
-      return Colors.grey;
-    } else {
-      return Colors.black;
-    }
+Color statusStr(String status) {
+  switch (status) {
+    case 'APPROVED':
+      return const Color(0xFF1B8A4C); // deep green
+    case 'REJECTED':
+      return const Color(0xFFD32F2F); // deep red
+    case 'PENDING':
+      return const Color(0xFFF57C00); // deep amber
+    case 'CANCELLED':
+      return const Color(0xFF546E7A); // blue-grey
+    case 'ONGOING':
+      return const Color(0xFF1565C0); // deep blue
+    case 'COMPLETED':
+      return const Color(0xFF00796B); // teal
+    case 'DRIVER_ARRIVING':
+      return const Color(0xFF6A1B9A); // deep purple
+    default:
+      return const Color(0xFF424242); // dark grey
   }
+}
 
-  IconData statusIcon(String status) {
-    if (status == 'APPROVED') {
-      return Icons.check_circle;
-    } else if (status == 'REJECTED') {
-      return Icons.cancel;
-    } else if (status == 'PENDING') {
-      return Icons.access_time;
-    } else if (status == 'CANCELLED') {
-      return Icons.block;
-    } else {
-      return Icons.help_outline;
-    }
+IconData statusIcon(String status) {
+  switch (status) {
+    case 'APPROVED':
+      return Icons.check_circle_rounded;
+    case 'REJECTED':
+      return Icons.cancel_rounded;
+    case 'PENDING':
+      return Icons.hourglass_top_rounded;
+    case 'CANCELLED':
+      return Icons.block_rounded;
+    case 'ONGOING':
+      return Icons.local_taxi_rounded;
+    case 'COMPLETED':
+      return Icons.task_alt_rounded;
+    case 'DRIVER_ARRIVING':
+      return Icons.directions_bike_rounded;
+    default:
+      return Icons.help_outline_rounded;
   }
+}
 
 // Improved method to load requests
   Future<void> _loadUserRequests() async {
@@ -137,6 +151,19 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   void showRequestDetails(BuildContext context, singleRequest) {
+    // Safe null check for cancellationReason
+    String? cancellationReason;
+    try {
+      cancellationReason = singleRequest.cancellationReason?.toString();
+    } catch (e) {
+      cancellationReason = null;
+    }
+
+    final bool hasReason = (singleRequest.status == 'CANCELLED' ||
+            singleRequest.status == 'REJECTED') &&
+        cancellationReason != null &&
+        cancellationReason.isNotEmpty;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -179,14 +206,14 @@ class _RequestsScreenState extends State<RequestsScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header
+                          // Header (your existing code)
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 'Request Details',
                                 style: GoogleFonts.poppins(
-                                  fontSize: 22,
+                                  fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: primaryColor,
                                 ),
@@ -231,7 +258,7 @@ class _RequestsScreenState extends State<RequestsScreen>
                               .slideY(begin: -0.2, end: 0),
                           const SizedBox(height: 24),
 
-                          // Request Type Card
+                          // Request Type Card (your existing code)
                           _buildInfoCard(
                             icon: Icons.article_outlined,
                             title: "Request Type",
@@ -243,38 +270,25 @@ class _RequestsScreenState extends State<RequestsScreen>
                               .slideX(begin: -0.1, end: 0),
                           const SizedBox(height: 16),
 
-                          // Reason Card - Show for cancelled or rejected requests
-                          // if ((singleRequest.status == 'CANCELLED' ||
-                          //         singleRequest.status == 'REJECTED') &&
-                          //     singleRequest.cancellationReason != null &&
-                          //     singleRequest.cancellationReason
-                          //         .toString()
-                          //         .isNotEmpty)
-                          //   _buildReasonCard(
-                          //     status: singleRequest.status.toString(),
-                          //     cancellationReason:
-                          //         singleRequest.cancellationReason?.toString(),
-                          //   )
-                          // .animate()
-                          // .fadeIn(duration: 400.ms, delay: 150.ms)
-                          // .slideX(begin: 0.1, end: 0),
+                          // Reason Card - WITH SAFE CHECK
+                          if (hasReason)
+                            _buildDetailReasonCard(
+                              status: singleRequest.status.toString(),
+                              cancellationReason: cancellationReason,
+                            )
+                                .animate()
+                                .fadeIn(duration: 400.ms, delay: 150.ms)
+                                .slideX(begin: 0.1, end: 0),
 
-                          // if ((singleRequest.status == 'CANCELLED' ||
-                          //         singleRequest.status == 'REJECTED') &&
-                          //     singleRequest.cancellationReason != null &&
-                          //     singleRequest.cancellationReason
-                          //         .toString()
-                          //         .isNotEmpty)
-                          //   const SizedBox(height: 16),
+                          if (hasReason) const SizedBox(height: 16),
 
-                          // Driver Information Card
+                          // Rest of your existing code...
                           _buildDriverCard(singleRequest)
                               .animate()
                               .fadeIn(duration: 400.ms, delay: 200.ms)
                               .slideX(begin: 0.1, end: 0),
                           const SizedBox(height: 16),
 
-                          // Location Details
                           _buildLocationCard(
                             singleRequest.originLocation.toString(),
                             singleRequest.destinationLocation.toString(),
@@ -294,6 +308,9 @@ class _RequestsScreenState extends State<RequestsScreen>
       },
     );
   }
+
+  String _activeFilter = 'ALL';
+  final List<String> _filterStatuses = ['ALL', 'PENDING', 'APPROVED', 'ONGOING',  'COMPLETED', 'CANCELLED', 'REJECTED'];
 
   Widget _buildReasonCard({
     required String status,
@@ -378,6 +395,159 @@ class _RequestsScreenState extends State<RequestsScreen>
     );
   }
 
+  Widget _buildDetailReasonCard({
+    required String status,
+    String? cancellationReason,
+  }) {
+    String? reason = cancellationReason;
+    Color primaryColor;
+    Color backgroundColor;
+    Color borderColor;
+    IconData icon;
+    String title;
+
+    if ((status == 'CANCELLED' || status == 'REJECTED') &&
+        reason != null &&
+        reason.isNotEmpty) {
+      if (status == 'CANCELLED') {
+        primaryColor = Colors.orange.shade700;
+        backgroundColor = Colors.orange.shade50;
+        borderColor = Colors.orange.shade200;
+        icon = Icons.info_outline_rounded;
+        title = 'Cancellation Reason';
+      } else {
+        primaryColor = Colors.red.shade700;
+        backgroundColor = Colors.red.shade50;
+        borderColor = Colors.red.shade200;
+        icon = Icons.cancel_outlined;
+        title = 'Rejection Reason';
+      }
+    } else {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            backgroundColor,
+            backgroundColor.withOpacity(0.3),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withOpacity(0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      primaryColor.withOpacity(0.2),
+                      primaryColor.withOpacity(0.1),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: primaryColor.withOpacity(0.4),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primaryColor.withOpacity(0.2),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: primaryColor, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: primaryColor.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        title.toUpperCase(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: primaryColor,
+                          letterSpacing: 1.5,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: borderColor.withOpacity(0.5),
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.03),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Text(
+              reason,
+              style: GoogleFonts.poppins(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+                height: 1.6,
+                letterSpacing: -0.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    )
+        .animate()
+        .fadeIn(duration: 500.ms)
+        .slideY(begin: 0.2, end: 0, duration: 500.ms)
+        .shimmer(delay: 800.ms, duration: 1500.ms);
+  }
+
   Widget _buildInfoCard({
     required IconData icon,
     required String title,
@@ -406,9 +576,9 @@ class _RequestsScreenState extends State<RequestsScreen>
               color: color.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: color, size: 16),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,7 +586,7 @@ class _RequestsScreenState extends State<RequestsScreen>
                 Text(
                   title,
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: FontWeight.w400,
                     color: Colors.grey[600],
                   ),
@@ -425,7 +595,7 @@ class _RequestsScreenState extends State<RequestsScreen>
                 Text(
                   content,
                   style: GoogleFonts.poppins(
-                    fontSize: 18,
+                    fontSize: 14,
                     fontWeight: FontWeight.w600,
                     color: Colors.black87,
                   ),
@@ -440,7 +610,7 @@ class _RequestsScreenState extends State<RequestsScreen>
 
   Widget _buildDriverCard(singleRequest) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -476,7 +646,7 @@ class _RequestsScreenState extends State<RequestsScreen>
                     Text(
                       'Motor Biker',
                       style: GoogleFonts.poppins(
-                        fontSize: 12,
+                        fontSize: 10,
                         fontWeight: FontWeight.w400,
                         color: Colors.grey[600],
                       ),
@@ -484,7 +654,7 @@ class _RequestsScreenState extends State<RequestsScreen>
                     Text(
                       "${singleRequest.motorBiker!.firstName ?? "------"} ${singleRequest.motorBiker!.lastName ?? "------"}",
                       style: GoogleFonts.poppins(
-                        fontSize: 18,
+                        fontSize: 14,
                         fontWeight: FontWeight.w600,
                         color: primaryColor,
                       ),
@@ -495,13 +665,13 @@ class _RequestsScreenState extends State<RequestsScreen>
               ElevatedButton.icon(
                 onPressed: () {
                   FlutterPhoneDirectCaller.callNumber(
-                      singleRequest.motorBiker!.phone.toString());
+                      "+"+singleRequest.motorBiker!.phone.toString());
                 },
-                icon: const Icon(Icons.phone, size: 18),
+                icon: const Icon(Icons.phone, size: 14),
                 label: Text(
                   "Call",
                   style: GoogleFonts.poppins(
-                    fontSize: 12,
+                    fontSize: 10,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -532,12 +702,12 @@ class _RequestsScreenState extends State<RequestsScreen>
                 Row(
                   children: [
                     Icon(Icons.phone_outlined,
-                        size: 16, color: Colors.grey[600]),
+                        size: 12, color: Colors.grey[600]),
                     const SizedBox(width: 8),
                     Text(
                       singleRequest.motorBiker!.phone ?? "------",
                       style: GoogleFonts.poppins(
-                        fontSize: 14,
+                        fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -550,12 +720,12 @@ class _RequestsScreenState extends State<RequestsScreen>
                     Row(
                       children: [
                         Icon(Icons.motorcycle,
-                            size: 16, color: Colors.grey[600]),
+                            size: 12, color: Colors.grey[600]),
                         const SizedBox(width: 8),
                         Text(
                           singleRequest.motorBiker!.motorType.toString(),
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -563,12 +733,12 @@ class _RequestsScreenState extends State<RequestsScreen>
                     ),
                     Row(
                       children: [
-                        Icon(Icons.numbers, size: 16, color: Colors.grey[600]),
+                        Icon(Icons.numbers, size: 12, color: Colors.grey[600]),
                         const SizedBox(width: 8),
                         Text(
                           singleRequest.motorBiker!.plateNumber.toString(),
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
+                            fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -586,7 +756,7 @@ class _RequestsScreenState extends State<RequestsScreen>
 
   Widget _buildLocationCard(String origin, String destination) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -601,7 +771,7 @@ class _RequestsScreenState extends State<RequestsScreen>
             location: origin,
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: const EdgeInsets.symmetric(vertical: 6),
             child: Row(
               children: [
                 const SizedBox(width: 16),
@@ -609,9 +779,9 @@ class _RequestsScreenState extends State<RequestsScreen>
                   children: List.generate(
                     3,
                     (index) => Container(
-                      width: 2,
-                      height: 4,
-                      margin: const EdgeInsets.symmetric(vertical: 2),
+                      width: 1,
+                      height: 2,
+                      margin: const EdgeInsets.symmetric(vertical: 1),
                       decoration: BoxDecoration(
                         color: Colors.grey[400],
                         borderRadius: BorderRadius.circular(1),
@@ -642,14 +812,14 @@ class _RequestsScreenState extends State<RequestsScreen>
     return Row(
       children: [
         Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(6),
           decoration: BoxDecoration(
             color: iconColor.withOpacity(0.1),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: iconColor, size: 20),
+          child: Icon(icon, color: iconColor, size: 16),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,7 +827,7 @@ class _RequestsScreenState extends State<RequestsScreen>
               Text(
                 label,
                 style: GoogleFonts.poppins(
-                  fontSize: 11,
+                  fontSize: 9,
                   fontWeight: FontWeight.w400,
                   color: Colors.grey[600],
                 ),
@@ -668,7 +838,7 @@ class _RequestsScreenState extends State<RequestsScreen>
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.poppins(
-                  fontSize: 13,
+                  fontSize: 10,
                   fontWeight: FontWeight.w500,
                   color: Colors.black87,
                 ),
@@ -748,53 +918,149 @@ class _RequestsScreenState extends State<RequestsScreen>
   }
 
   Widget _buildSuccessState(ReceivedSentRequestsSuccess state) {
-    if (state.userSentRequestsModel.data == null) {
-      return _buildEmptyState();
-    }
-
-    final List<RequestContent> requests =
-        state.userSentRequestsModel.data!.content;
-
-    if (requests.isEmpty) {
-      return _buildEmptyState();
-    }
-
-    // Sort requests: PENDING first
-    requests.sort((a, b) {
-      if (a.status == "PENDING" && b.status != "PENDING") {
-        return -1;
-      } else if (a.status != "PENDING" && b.status == "PENDING") {
-        return 1;
-      }
-      return 0;
-    });
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        _handleRefresh();
-        await Future.delayed(const Duration(milliseconds: 1000));
-      },
-      color: primaryColor,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: requests.length,
-        itemBuilder: (context, index) {
-          return _buildRequestCard(context, requests[index], index)
-              .animate()
-              .fadeIn(
-                duration: 400.ms,
-                delay: (50 * index).ms,
-              )
-              .slideY(
-                begin: 0.2,
-                end: 0,
-                duration: 400.ms,
-                delay: (50 * index).ms,
-              );
-        },
-      ),
-    );
+  if (state.userSentRequestsModel.data == null) {
+    return _buildEmptyState();
   }
+
+  final List<RequestContent> allRequests =
+      state.userSentRequestsModel.data!.content;
+
+  if (allRequests.isEmpty) {
+    return _buildEmptyState();
+  }
+
+  // Sort: latest first, then PENDING bubbled to top
+  allRequests.sort((a, b) {
+    if (a.status == "PENDING" && b.status != "PENDING") return -1;
+    if (a.status != "PENDING" && b.status == "PENDING") return 1;
+    return 0;
+  });
+
+  // Count per status
+  Map<String, int> statusCounts = {'ALL': allRequests.length};
+  for (var r in allRequests) {
+    final s = r.status.toString();
+    statusCounts[s] = (statusCounts[s] ?? 0) + 1;
+  }
+
+  // Apply filter
+  final filtered = _activeFilter == 'ALL'
+      ? allRequests
+      : allRequests.where((r) => r.status == _activeFilter).toList();
+
+  return RefreshIndicator(
+    onRefresh: () async {
+      _handleRefresh();
+      await Future.delayed(const Duration(milliseconds: 1000));
+    },
+    color: primaryColor,
+    child: Column(
+      children: [
+        // Filter Chips Row
+        Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: SizedBox(
+            height: 42,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _filterStatuses.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final status = _filterStatuses[index];
+                final count = statusCounts[status] ?? 0;
+                final isActive = _activeFilter == status;
+
+                Color chipColor;
+                switch (status) {
+                  case 'ALL': chipColor = primaryColor; break;
+                  case 'PENDING': chipColor = Colors.orange; break;
+                  case 'APPROVED': chipColor = Colors.green; break;
+                  case 'ONGOING': chipColor = Colors.blue; break;
+                  case 'CANCELLED': chipColor = Colors.grey; break;
+                  case 'REJECTED': chipColor = Colors.red; break;
+                  default: chipColor = Colors.black;
+                }
+
+                return GestureDetector(
+                  onTap: () => setState(() => _activeFilter = status),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isActive ? chipColor : chipColor.withOpacity(0.08),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isActive ? chipColor : chipColor.withOpacity(0.4),
+                        width: isActive ? 0 : 1,
+                      ),
+                      boxShadow: isActive
+                          ? [BoxShadow(color: chipColor.withOpacity(0.35), blurRadius: 8, offset: const Offset(0, 3))]
+                          : [],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          status,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: isActive ? Colors.white : chipColor,
+                          ),
+                        ),
+                        if (count > 0) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: isActive
+                                  ? Colors.white.withOpacity(0.3)
+                                  : chipColor,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              '$count',
+                              style: GoogleFonts.poppins(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.2, end: 0),
+
+        // Divider
+        Container(height: 1, color: Colors.grey[100]),
+
+        // List
+        Expanded(
+          child: filtered.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    return _buildRequestCard(context, filtered[index], index)
+                        .animate()
+                        .fadeIn(duration: 400.ms, delay: (50 * index).ms)
+                        .slideY(begin: 0.2, end: 0, duration: 400.ms, delay: (50 * index).ms);
+                  },
+                ),
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildEmptyState() {
     return Center(
@@ -917,36 +1183,54 @@ class _RequestsScreenState extends State<RequestsScreen>
     );
   }
 
-  PreferredSizeWidget _buildAppBar() {
-    return AppBar(
-      elevation: 0,
-      backgroundColor: primaryColor,
-      title: Text(
-        'My Requests',
-        style: GoogleFonts.poppins(
-          fontWeight: FontWeight.w600,
-          fontSize: 20,
-        ),
-      ),
-      leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new, size: 20),
-        onPressed: () {
-          context.safeGoNamed(home);
-        },
-      ),
-      actions: [
-        IconButton(
-          onPressed: _handleRefresh,
-          icon: RotationTransition(
-            turns: _refreshController,
-            child: const Icon(Icons.sync, size: 28),
+PreferredSizeWidget _buildAppBar() {
+  return AppBar(
+    elevation: 0,
+    backgroundColor: primaryColor,
+    title: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'My Requests',
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+            color: Colors.white,
           ),
         ),
-        const SizedBox(width: 8),
+        if (_activeFilter != 'ALL')
+          Text(
+            'Filtered: $_activeFilter',
+            style: GoogleFonts.poppins(
+              fontSize: 11,
+              color: Colors.white.withOpacity(0.8),
+              fontWeight: FontWeight.w400,
+            ),
+          ).animate().fadeIn(duration: 200.ms),
       ],
-    );
-  }
-
+    ),
+    leading: IconButton(
+      icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+      onPressed: () => context.safeGoNamed(home),
+    ),
+    actions: [
+      if (_activeFilter != 'ALL')
+        IconButton(
+          tooltip: 'Clear filter',
+          onPressed: () => setState(() => _activeFilter = 'ALL'),
+          icon: const Icon(Icons.filter_alt_off_rounded, color: Colors.white, size: 22),
+        ).animate().fadeIn(duration: 200.ms),
+      IconButton(
+        onPressed: _handleRefresh,
+        icon: RotationTransition(
+          turns: _refreshController,
+          child: const Icon(Icons.sync, color: Colors.white, size: 28),
+        ),
+      ),
+      const SizedBox(width: 8),
+    ],
+  );
+}
   Widget _buildBottomBar() {
     return Container(
       height: 50,
@@ -973,187 +1257,318 @@ class _RequestsScreenState extends State<RequestsScreen>
     );
   }
 
-  Widget _buildRequestCard(BuildContext context, request, int index) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: statusStr(request.status.toString()).withOpacity(0.3),
-          width: 2,
+Widget _buildRequestCard(BuildContext context, request, int index) {
+  String? cancellationReason;
+  try {
+    cancellationReason = request.cancellationReason?.toString();
+  } catch (e) {
+    cancellationReason = null;
+  }
+
+  final bool hasReason =
+      (request.status == 'CANCELLED' || request.status == 'REJECTED') &&
+          cancellationReason != null &&
+          cancellationReason.isNotEmpty;
+
+  final Color statusColor = statusStr(request.status.toString());
+
+  return Container(
+    margin: const EdgeInsets.only(bottom: 12),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      boxShadow: [
+        BoxShadow(
+          color: statusColor.withOpacity(0.08),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: statusStr(request.status.toString()).withOpacity(0.1),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(20),
-        child: Column(
-          children: [
-            // Header with gradient
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    statusStr(request.status.toString()).withOpacity(0.1),
-                    statusStr(request.status.toString()).withOpacity(0.05),
-                  ],
-                ),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Icon(
-                      Icons.person,
-                      color: primaryColor,
-                      size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${request.motorBiker!.firstName} ${request.motorBiker!.lastName}',
-                          style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          'Motor Biker',
-                          style: GoogleFonts.poppins(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusStr(request.status.toString()),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          statusIcon(request.status.toString()),
-                          size: 12,
-                          color: Colors.white,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          request.status.toString(),
-                          style: GoogleFonts.poppins(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 11,
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                      .animate(onPlay: (controller) => controller.repeat())
-                      .shimmer(delay: 2000.ms, duration: 1500.ms),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.04),
+          blurRadius: 6,
+          offset: const Offset(0, 2),
+        ),
+      ],
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Header ──────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  statusColor.withOpacity(0.13),
+                  statusColor.withOpacity(0.04),
                 ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
             ),
+            child: Row(
+              children: [
+                // Avatar
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [primaryColor, primaryColor.withOpacity(0.7)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: primaryColor.withOpacity(0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Text(
+                      (request.motorBiker?.firstName ?? '?')[0].toUpperCase(),
+                      style: GoogleFonts.poppins(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
 
-            // Body
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: Column(
-                children: [
-                  // Request Type
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // Name + role
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Text(
+                        '${request.motorBiker?.firstName ?? '---'} ${request.motorBiker?.lastName ?? ''}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.black87,
+                          letterSpacing: -0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
                         children: [
+                          Icon(Icons.motorcycle, size: 11, color: Colors.grey[500]),
+                          const SizedBox(width: 4),
                           Text(
-                            "Request Type",
+                            'Motor Biker',
                             style: GoogleFonts.poppins(
-                              color: Colors.grey[600],
-                              fontWeight: FontWeight.w400,
-                              fontSize: 11,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            request.requestType.toString(),
-                            style: GoogleFonts.poppins(
-                              color: Colors.black87,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                              fontSize: 10,
+                              color: Colors.grey[500],
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
                     ],
                   ),
+                ),
 
-                  // Reason Section - Show for cancelled or rejected requests
-                  // _buildReasonSection(
-                  //   request.status.toString(),
-                  //   request.cancellationReason?.toString(),
-                  // ),
-
-                  const SizedBox(height: 10),
-
-                  // Action Buttons
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                // Status badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      BoxShadow(
+                        color: statusColor.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      if (request.status == "ONGOING")
-                        _buildActionButton(
+                      Icon(statusIcon(request.status.toString()), size: 10, color: Colors.white),
+                      const SizedBox(width: 4),
+                      Text(
+                        request.status.toString(),
+                        style: GoogleFonts.poppins(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 9,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                    .animate(onPlay: (c) => c.repeat())
+                    .shimmer(delay: 2000.ms, duration: 1500.ms),
+              ],
+            ),
+          ),
+
+          // ── Body ────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Request type + date row
+                Row(
+                  children: [
+                    // Request type chip
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.07),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: primaryColor.withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.article_outlined, color: primaryColor, size: 12),
+                          const SizedBox(width: 6),
+                          Text(
+                            request.requestType.toString(),
+                            style: GoogleFonts.poppins(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    // Date
+                    Row(
+                      children: [
+                        Icon(Icons.access_time_rounded, size: 11, color: Colors.grey[400]),
+                        const SizedBox(width: 4),
+                        Text(
+                          request.requestedTime != null
+                              ? request.requestedTime.toString().substring(0, 10)
+                              : '---',
+                          style: GoogleFonts.poppins(
+                            fontSize: 10,
+                            color: Colors.grey[500],
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 10),
+
+                // Location card
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[50],
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: Colors.grey[200]!),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildLocationRow(
+                        icon: CupertinoIcons.location_circle,
+                        iconColor: primaryColor,
+                        label: "Origin",
+                        location: request.originLocation.toString(),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 17, top: 4, bottom: 4),
+                        child: Row(
+                          children: List.generate(
+                            3,
+                            (_) => Container(
+                              width: 2,
+                              height: 3,
+                              margin: const EdgeInsets.symmetric(vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[300],
+                                borderRadius: BorderRadius.circular(1),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      _buildLocationRow(
+                        icon: CupertinoIcons.location_solid,
+                        iconColor: Colors.orange,
+                        label: "Destination",
+                        location: request.destinationLocation.toString(),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Cancellation / rejection reason
+                if (hasReason) ...[
+                  const SizedBox(height: 10),
+                  _buildEnhancedReasonCard(
+                    status: request.status.toString(),
+                    reason: cancellationReason!,
+                  ),
+                ],
+
+                const SizedBox(height: 10),
+
+                // ── Action Buttons ───────────────────────────────
+                Row(
+                  children: [
+                    // View Details — always visible
+                    Expanded(
+                      child: _buildEnhancedActionButton(
+                        icon: Icons.info_outline_rounded,
+                        label: 'Details',
+                        color: primaryColor,
+                        gradient: LinearGradient(
+                          colors: [primaryColor, primaryColor.withOpacity(0.8)],
+                        ),
+                        onTap: () => showRequestDetails(context, request),
+                      ),
+                    ),
+
+                    // View Map — ONGOING or APPROVED
+                    if (request.status == "ONGOING" || request.status == "APPROVED") ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildEnhancedActionButton(
                           icon: Icons.map_outlined,
                           label: 'View Map',
-                          color: orangeColor,
+                          color: Colors.orange,
+                          gradient: LinearGradient(
+                            colors: [Colors.orange, Colors.deepOrange],
+                          ),
                           onTap: () {
                             context.safeGoNamed(clientDirections, params: {
                               'requestId': request.id.toString(),
-                              'originLocation':
-                                  request.originLocation.toString(),
-                              'destinationLocation':
-                                  request.destinationLocation.toString(),
-                              'clientNames':
-                                  '${request.client!.fname} ${request.client!.fname}',
-                              'clientPhone': '${request.client!.phone}',
+                              'originLocation': request.originLocation.toString(),
+                              'destinationLocation': request.destinationLocation.toString(),
+                              'clientNames': '${request.client?.fname} ${request.client?.lname}',
+                              'clientPhone': '${request.client?.phone}',
+                              'driverNames': '${request.driverName}',
+                              'driverPhone': '${request.driverPhone}',
                             });
                           },
                         ),
-                      _buildActionButton(
-                        icon: Icons.info_outline,
-                        label: 'View Details',
-                        color: primaryColor,
-                        onTap: () {
-                          showRequestDetails(context, request);
-                        },
                       ),
-                      if (request.status == "PENDING")
-                        BlocConsumer<UpdateSentRequestStatusBloc,
+                    ],
+
+                    // Cancel — PENDING only
+                    if (request.status == "PENDING") ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: BlocConsumer<UpdateSentRequestStatusBloc,
                             UpdateSentRequestStatusState>(
                           listener: (context, state) {
                             if (state is UpdateSentRequestStatusSuccess) {
@@ -1168,68 +1583,219 @@ class _RequestsScreenState extends State<RequestsScreen>
                             }
                           },
                           builder: (context, state) {
-                            return _buildActionButton(
+                            return _buildEnhancedActionButton(
                               icon: Icons.cancel_outlined,
                               label: 'Cancel',
-                              color: redColor,
-                              onTap: () {
-                                _showCancelBottomSheet(
-                                    context, request.id!.toInt());
-                              },
+                              color: Colors.red,
+                              gradient: const LinearGradient(
+                                colors: [Colors.red, Color(0xFFc62828)],
+                              ),
+                              onTap: () => _showCancelBottomSheet(context, request.id!.toInt()),
                             );
                           },
                         ),
+                      ),
                     ],
-                  ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+// NEW: Enhanced reason card widget
+  Widget _buildEnhancedReasonCard({
+    required String status,
+    required String reason,
+  }) {
+    Color primaryColor;
+    Color backgroundColor;
+    Color borderColor;
+    IconData icon;
+    String title;
+
+    if (status == 'CANCELLED') {
+      primaryColor = Colors.orange.shade700;
+      backgroundColor = Colors.orange.shade50;
+      borderColor = Colors.orange.shade200;
+      icon = Icons.info_outline_rounded;
+      title = 'Cancellation Reason';
+    } else {
+      // REJECTED
+      primaryColor = Colors.red.shade700;
+      backgroundColor = Colors.red.shade50;
+      borderColor = Colors.red.shade200;
+      icon = Icons.cancel_outlined;
+      title = 'Rejection Reason';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            backgroundColor,
+            backgroundColor.withOpacity(0.5),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: borderColor,
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: primaryColor.withOpacity(0.1),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  primaryColor.withOpacity(0.2),
+                  primaryColor.withOpacity(0.1),
                 ],
               ),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: primaryColor.withOpacity(0.3),
+                width: 1.5,
+              ),
             ),
-          ],
-        ),
+            child: Icon(
+              icon,
+              color: primaryColor,
+              size: 24,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(
+                          color: primaryColor.withOpacity(0.3),
+                          width: 1,
+                        ),
+                      ),
+                      child: Text(
+                        title.toUpperCase(),
+                        style: GoogleFonts.poppins(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          color: primaryColor,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: borderColor.withOpacity(0.5),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    reason,
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                      height: 1.5,
+                      letterSpacing: -0.1,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
-    );
+    )
+        .animate()
+        .fadeIn(duration: 500.ms, delay: 100.ms)
+        .slideY(begin: 0.2, end: 0, duration: 500.ms)
+        .shimmer(delay: 1000.ms, duration: 1500.ms);
   }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return Material(
+Widget _buildEnhancedActionButton({
+  required IconData icon,
+  required String label,
+  required Color color,
+  required Gradient gradient,
+  required VoidCallback onTap,
+}) {
+  return SizedBox(
+    height: 38,
+    child: Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Ink(
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            gradient: gradient,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.3),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: Row(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 8),
+              Icon(icon, size: 13, color: Colors.white),
+              const SizedBox(width: 5),
               Text(
                 label,
                 style: GoogleFonts.poppins(
                   fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: color,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                  letterSpacing: 0.2,
                 ),
               ),
             ],
           ),
         ),
       ),
-    )
-        .animate()
-        .fadeIn(duration: 200.ms)
-        .scale(begin: const Offset(0.8, 0.8), duration: 200.ms);
-  }
+    ),
+  )
+      .animate()
+      .fadeIn(duration: 300.ms)
+      .scale(begin: const Offset(0.9, 0.9), duration: 300.ms);
+}
 
   // Add this new method to show the cancel bottom sheet
   void _showCancelBottomSheet(BuildContext context, int requestId) {

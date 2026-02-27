@@ -34,6 +34,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'controllers/language_controller.dart';
 import 'package:in_app_update/in_app_update.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'package:speed_ios/api/firebase.notification.service.dart';
+
 
 Future<void> main() async {
   if (kReleaseMode) {
@@ -46,6 +50,10 @@ Future<void> main() async {
     await dotenv.load(fileName: '.env');
   }
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+     options: DefaultFirebaseOptions.currentPlatform,
+  );
+  // await FirebaseApi().initNotifications();
   await EasyLocalization.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
@@ -141,8 +149,7 @@ class _MyAppState extends State<MyApp> {
             create: (_) => UpdateSentRequestStatusBloc(
                 UpdateSentRequestStatusInitial(), AuthService())),
         BlocProvider<AvailableDriverLocationBloc>(
-            create: (_) => AvailableDriverLocationBloc(
-                AvailableDriverLocationInitial(), LocationService())),
+            create: (_) => AvailableDriverLocationBloc(LocationService())),
         BlocProvider<NearbyDriverBloc>(
             create: (_) =>
                 NearbyDriverBloc(NearbyDriverInitial(), LocationService())),

@@ -11,7 +11,7 @@ import 'package:speed_ios/states/requests/create_request_bloc.dart';
 import 'package:speed_ios/utils/colors.dart';
 import 'package:speed_ios/utils/notifiers.dart';
 import 'package:flutter/cupertino.dart';
- import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -24,6 +24,7 @@ import 'package:google_api_headers/google_api_headers.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:google_maps_webservice/places.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../api/auth.service.dart';
@@ -54,11 +55,10 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   CreateRequestBloc createRequestBloc =
       CreateRequestBloc(CreateRequestInitial(), AuthService());
   AvailableDriverLocationBloc _availableDriverLocationBloc =
-      AvailableDriverLocationBloc(
-          AvailableDriverLocationInitial(), LocationService());
+      AvailableDriverLocationBloc(LocationService());
   ActiveRequestBloc _activeRequestBloc = ActiveRequestBloc(AuthService());
 
-    UpdateSentRequestStatusBloc updateSentRequestStatusBloc =
+  UpdateSentRequestStatusBloc updateSentRequestStatusBloc =
       UpdateSentRequestStatusBloc(
           UpdateSentRequestStatusInitial(), AuthService());
 
@@ -74,8 +74,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   TextEditingController descriptionController = TextEditingController();
   int requestStep = 1;
   String? _currentAddress;
-  late AvailableDriverData motorbikerData;
-
+  late NearbyDriver motorbikerData;
+  final _db = FirebaseDatabase.instance;
   getCurrentUserInfo() async {
     SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
     String? userJson = sharedPreferences.getString("currentUser");
@@ -98,18 +98,31 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 1000),
     );
-      updateSentRequestStatusBloc = BlocProvider.of<UpdateSentRequestStatusBloc>(context);
+    updateSentRequestStatusBloc =
+        BlocProvider.of<UpdateSentRequestStatusBloc>(context);
 
     createRequestBloc = BlocProvider.of<CreateRequestBloc>(context);
     _activeRequestBloc = BlocProvider.of<ActiveRequestBloc>(context);
 
-    motorbikerData = AvailableDriverData();
     profileBloc = BlocProvider.of<ClientProfileBloc>(context);
     _availableDriverLocationBloc =
         BlocProvider.of<AvailableDriverLocationBloc>(context);
     _getCurrentLocation();
     loadCountryCode();
     _startPeriodicRefresh(); // Add this line
+  }
+
+
+    Future<void> _initPendingFirebaseTrip( String _requestId, String totalFare, String farePerKm, String totalDistance) async {
+   
+    await _db.ref('active_trips/$_requestId').set({
+      'tripId': _requestId,
+      'fare': {
+        'totalFare':  totalFare,
+        'farePerKm': farePerKm,
+        'totalDistance':   totalDistance,
+      }  
+    });
   }
 
 // Updated _checkActiveRequest method:
@@ -240,14 +253,27 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   @override
   didChangeDependencies() {
     super.didChangeDependencies();
-    _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+    // Only fetch if we have valid coordinates
+    if (sLat != 0.0 && sLng != 0.0) {
+      _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent(
+        latitude: sLat,
+        longitude: sLng,
+        radiusKm: distanceThreshold,
+      ));
+    }
     profileBloc.add(FetchAllClientInformation(clientId: userId.toString()));
     checkIfNetworkIsAvailable();
   }
 
   void _handleRefresh() {
     _refreshController.forward(from: 0);
-    _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+    if (sLat != 0.0 && sLng != 0.0) {
+      _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent(
+        latitude: sLat,
+        longitude: sLng,
+        radiusKm: distanceThreshold,
+      ));
+    }
     _checkActiveRequest();
   }
 
@@ -258,9 +284,10 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
         'requestId': request.id.toString(),
         'originLocation': request.originLocation.toString(),
         'destinationLocation': request.destinationLocation.toString(),
-        'clientNames':
-            '${request.client!.fname} ${request.client!.fname}',
+        'clientNames': '${request.client!.fname} ${request.client!.fname}',
         'clientPhone': '${request.client!.phone}',
+        'driverName': '${request.driverName}',
+        'driverPhone': '${request.driverPhone}',
       });
     }
   }
@@ -340,7 +367,10 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
       Placemark place = placemarks[0];
       print("/////////////////////// place //////////////////");
       print(place);
-      _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+      _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          radiusKm: distanceThreshold));
       setState(() {
         _currentAddress =
             "${place.street}, ${place.subLocality}, ${place.locality}, ${place.country}";
@@ -348,6 +378,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
         sLng = currentPosition.longitude;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _currentAddress = "Error getting address: $e";
       });
@@ -356,26 +387,53 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
 
   String distanceOriginDestination = "";
   String distancePrice = "0.0";
-  String selectedUnitPrice = "1000";
+  String selectedUnitPrice = "750";
+
+  // void calculateDistanceBtw(LatLng destination, LatLng source) {
+  //   double distanceInMeters = Geolocator.distanceBetween(source.latitude,
+  //       source.longitude, destination.latitude, destination.longitude);
+  //   var distanceKm = distanceInMeters / 1000;
+  //   if (kDebugMode) {
+  //     print("DISTANCEMETERS: $distanceKm");
+  //   }
+  //   var totPrice = distanceKm * int.parse(selectedUnitPrice.toString());
+  //   setState(() {
+  //     distanceOriginDestination = distanceKm.toStringAsFixed(1);
+  //     distancePrice = totPrice.toStringAsFixed(1);
+  //   });
+
+  //   if (kDebugMode) {
+  //     print("DISTANCE $distanceOriginDestination");
+  //     print("DISTPRICE $distancePrice");
+  //   }
+  // }
 
   void calculateDistanceBtw(LatLng destination, LatLng source) {
-    double distanceInMeters = Geolocator.distanceBetween(source.latitude,
-        source.longitude, destination.latitude, destination.longitude);
-    var distanceKm = distanceInMeters / 1000;
-    if (kDebugMode) {
-      print("DISTANCEMETERS: $distanceKm");
-    }
-    var totPrice = distanceKm * int.parse(selectedUnitPrice.toString());
-    setState(() {
-      distanceOriginDestination = distanceKm.toStringAsFixed(1);
-      distancePrice = totPrice.toStringAsFixed(1);
-    });
+  double distanceInMeters = Geolocator.distanceBetween(
+    source.latitude,
+    source.longitude,
+    destination.latitude,
+    destination.longitude,
+  );
 
-    if (kDebugMode) {
-      print("DISTANCE $distanceOriginDestination");
-      print("DISTPRICE $distancePrice");
-    }
+  double distanceKm = (distanceInMeters / 1000 * 10).roundToDouble() / 10;
+  double unitPrice = double.parse(selectedUnitPrice.toString());
+  double totPrice = (distanceKm * unitPrice * 10).roundToDouble() / 10;
+
+  if (kDebugMode) {
+    print("DISTANCE KM: $distanceKm");
   }
+
+  setState(() {
+    distanceOriginDestination = distanceKm.toStringAsFixed(1);
+    distancePrice = totPrice.toStringAsFixed(1);
+  });
+
+  if (kDebugMode) {
+    print("DISTANCE $distanceOriginDestination");
+    print("DISTPRICE $distancePrice");
+  }
+}
 
   LatLng currentPosition = const LatLng(0, 0);
   LatLng destinationPosition = const LatLng(0, 0);
@@ -384,7 +442,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   String locationSelected = "";
   double dLat = 0.0, dLng = 0.0;
   double sLat = 0.0, sLng = 0.0;
-  String? countryCode = "rw";
+  String? countryCode = "tz";
 
   String? jsonCode;
   loadCountryCode() async {
@@ -394,11 +452,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     setState(() {
       countryCode = jsonCode;
     });
-    if (countryCode.toString().toLowerCase() == 'rw') {
-      selectedUnitPrice = "500";
-    } else {
-      selectedUnitPrice = "1000";
-    }
+    selectedUnitPrice = "750";
     print("COUNTRY CODE $jsonCode");
   }
 
@@ -611,9 +665,18 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     return degrees * pi / 180;
   }
 
-  double distanceThreshold = 500.0;
+  double distanceThreshold = 3.0;
 
   void _showMotorbikersBottomSheet(BuildContext context) {
+    // Fetch fresh data when opening
+    if (sLat != 0.0 && sLng != 0.0) {
+      _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent(
+        latitude: sLat,
+        longitude: sLng,
+        radiusKm: distanceThreshold,
+      ));
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -650,7 +713,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                       borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  // Header
+
+                  // Header with refresh button
                   Padding(
                     padding: const EdgeInsets.all(20.0),
                     child: Row(
@@ -691,115 +755,97 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                             ],
                           ),
                         ),
+                        // Refresh button
+                        BlocBuilder<AvailableDriverLocationBloc,
+                            AvailableDriverLocationState>(
+                          builder: (context, state) {
+                            final isLoading =
+                                state is AvailableDriverLocationLoading;
+
+                            return IconButton(
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
+                                      if (sLat != 0.0 && sLng != 0.0) {
+                                        _availableDriverLocationBloc.add(
+                                          FetchAvailableDriverLocationEvent(
+                                            latitude: sLat,
+                                            longitude: sLng,
+                                            radiusKm: distanceThreshold,
+                                          ),
+                                        );
+                                      }
+                                    },
+                              icon: isLoading
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: primaryColor,
+                                      ),
+                                    )
+                                  : const Icon(Icons.refresh),
+                              color: primaryColor,
+                            );
+                          },
+                        ),
                       ],
                     )
                         .animate()
                         .fadeIn(duration: 300.ms)
                         .slideY(begin: -0.2, end: 0),
                   ),
-                  // List
+
+                  // Driver list
                   Expanded(
                     child: BlocConsumer<AvailableDriverLocationBloc,
                         AvailableDriverLocationState>(
-                      listener: (context, state) {},
+                      listener: (context, state) {
+                        if (state is AvailableDriverLocationError) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(state.message),
+                              backgroundColor: Colors.red,
+                              behavior: SnackBarBehavior.floating,
+                              action: SnackBarAction(
+                                label: 'Retry',
+                                textColor: Colors.white,
+                                onPressed: () {
+                                  if (sLat != 0.0 && sLng != 0.0) {
+                                    _availableDriverLocationBloc.add(
+                                      FetchAvailableDriverLocationEvent(
+                                        latitude: sLat,
+                                        longitude: sLng,
+                                        radiusKm: distanceThreshold,
+                                      ),
+                                    );
+                                  }
+                                },
+                              ),
+                            ),
+                          );
+                        }
+                      },
                       builder: (context, state) {
                         if (state is AvailableDriverLocationLoading) {
-                          return Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SpinKitDoubleBounce(
-                                color: primaryColor,
-                                size: 50,
-                              ),
-                              const SizedBox(height: 20),
-                              Text(
-                                'Finding nearby drivers...',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w400,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ).animate().fadeIn(duration: 400.ms);
+                          return _buildLoadingState();
                         }
 
                         if (state is AvailableDriverLocationSuccess) {
-                          List<AvailableDriverData> nearbyDrivers = state
-                              .availableDriverOnMapModel.data!
-                              .where((driver) {
-                            if (driver.latitude != null &&
-                                driver.longitude != null) {
-                              double distance = calculateDistance(sLat, sLng,
-                                  driver.latitude!, driver.longitude!);
-                              return distance <= distanceThreshold;
-                            }
-                            return false;
-                          }).toList();
-
-                          if (nearbyDrivers.isEmpty) {
-                            return Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(32),
-                                    decoration: BoxDecoration(
-                                      color: Colors.grey[100],
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      Icons.search_off,
-                                      size: 64,
-                                      color: Colors.grey[400],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 24),
-                                  Text(
-                                    'No drivers available',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.grey[700],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Try again in a few moments',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      color: Colors.grey[500],
-                                    ),
-                                  ),
-                                ],
-                              )
-                                  .animate()
-                                  .fadeIn(duration: 400.ms)
-                                  .scale(delay: 200.ms),
-                            );
-                          }
-
-                          return ListView.builder(
-                            controller: scrollController,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            itemCount: nearbyDrivers.length,
-                            itemBuilder: (context, index) {
-                              AvailableDriverData item = nearbyDrivers[index];
-                              double distance = calculateDistance(sLat, sLng,
-                                  item.latitude ?? 0, item.longitude ?? 0);
-
-                              return _buildDriverCard(item, distance, index)
-                                  .animate()
-                                  .fadeIn(
-                                      duration: 400.ms, delay: (50 * index).ms)
-                                  .slideX(
-                                      begin: 0.2,
-                                      end: 0,
-                                      delay: (50 * index).ms);
-                            },
-                          );
+                          return _buildDriversList(state, scrollController);
                         }
-                        return const SizedBox.shrink();
+
+                        if (state is AvailableDriverLocationEmpty) {
+                          return _buildEmptyState(state);
+                        }
+
+                        if (state is AvailableDriverLocationError) {
+                          return _buildErrorState(state);
+                        }
+
+                        // Initial state
+                        return _buildInitialDriversState();
                       },
                     ),
                   ),
@@ -812,9 +858,209 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget _buildDriverCard(
-      AvailableDriverData item, double distance, int index) {
-    final isOnline = item.motorBiker!.isActive == true;
+// Loading state
+  Widget _buildLoadingState() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SpinKitDoubleBounce(
+          color: primaryColor,
+          size: 50,
+        ),
+        const SizedBox(height: 20),
+        Text(
+          'Finding nearby drivers...',
+          style: GoogleFonts.poppins(
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
+            color: Colors.grey[600],
+          ),
+        ),
+        const SizedBox(height: 8),
+        if (sLat != 0.0 && sLng != 0.0)
+          Text(
+            'Searching at: ${sLat.toStringAsFixed(4)}, ${sLng.toStringAsFixed(4)}',
+            style: GoogleFonts.poppins(
+              fontSize: 12,
+              color: Colors.grey[500],
+            ),
+          ),
+      ],
+    ).animate().fadeIn(duration: 400.ms);
+  }
+
+// Drivers list with header info
+  Widget _buildDriversList(
+      AvailableDriverLocationSuccess state, ScrollController scrollController) {
+    // NEW: Access drivers from the new structure
+    final allDrivers = state.drivers; // This now returns List<NearbyDriver>
+
+    // Filter nearby drivers using distanceKm from API
+    List<NearbyDriver> nearbyDrivers = allDrivers.where((driver) {
+      return driver.distanceKm <= distanceThreshold;
+    }).toList();
+
+    // Sort by distance (distance is already calculated by API)
+    nearbyDrivers.sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
+
+    if (nearbyDrivers.isEmpty) {
+      return _buildNoDriversNearby(state);
+    }
+
+    return Column(
+      children: [
+        // Info header with new metadata
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+          color: primaryColor.withOpacity(0.05),
+          child: Row(
+            children: [
+              Icon(Icons.info_outline, size: 16, color: primaryColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Found ${state.driversCount} driver${state.driversCount == 1 ? '' : 's'} within ${distanceThreshold.toStringAsFixed(1)}km',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[700],
+                  ),
+                ),
+              ),
+              if (state.hasMore)
+                Icon(Icons.more_horiz, size: 16, color: Colors.orange),
+              const SizedBox(width: 4),
+              Text(
+                _getTimeAgo(state.lastUpdated),
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: Colors.grey[600],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        // Stale data warning
+        if (state.isStale)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+            color: Colors.orange[50],
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber, size: 16, color: Colors.orange[700]),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Data may be outdated. Pull down to refresh.',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.orange[700],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+        // Drivers list
+        Expanded(
+          child: ListView.builder(
+            controller: scrollController,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            itemCount: nearbyDrivers.length,
+            itemBuilder: (context, index) {
+              NearbyDriver item = nearbyDrivers[index];
+              // Use the distance already calculated by the API
+              double distance = item.distanceKm;
+
+              return _buildDriverCard(item, distance, index)
+                  .animate()
+                  .fadeIn(duration: 400.ms, delay: (50 * index).ms)
+                  .slideX(begin: 0.2, end: 0, delay: (50 * index).ms);
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+// No drivers nearby
+  Widget _buildNoDriversNearby(AvailableDriverLocationSuccess state) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.search_off,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'No drivers within ${distanceThreshold.toStringAsFixed(1)}km',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            if (state.driversCount > 0)
+              Text(
+                'Found ${state.driversCount} driver${state.driversCount == 1 ? '' : 's'} but they\'re further away',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  color: Colors.grey[500],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                // Use the new ExpandSearchRadiusEvent
+                _availableDriverLocationBloc
+                    .add(const ExpandSearchRadiusEvent());
+              },
+              icon: const Icon(Icons.search),
+              label: Text(
+                'Search Wider Area',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ).animate().fadeIn(duration: 400.ms).scale(delay: 200.ms),
+      ),
+    );
+  }
+
+  Widget _buildDriverCard(NearbyDriver item, double distance, int index) {
+    // NEW: Access properties from NearbyDriver model
+    final isOnline = item.isOnline; // Use the getter
+    final driverName = item.displayName; // Use the convenient getter
+    final driverPhone = item.motorBikerPhone; // Or use specific field
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -866,7 +1112,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        "${item.motorBiker!.firstName ?? "------"} ${item.motorBiker!.lastName ?? "------"}",
+                        driverName,
                         style: GoogleFonts.poppins(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -878,8 +1124,10 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                           Icon(Icons.phone_outlined,
                               size: 14, color: Colors.grey[600]),
                           const SizedBox(width: 4),
+                          // Note: Phone number not in NearbyDriver model
+                          // You may need to adjust based on available fields
                           Text(
-                            item.motorBiker!.phone ?? "------",
+                            'Phone: ${item.motorBikerPhone}',
                             style: GoogleFonts.poppins(
                               fontSize: 13,
                               fontWeight: FontWeight.w400,
@@ -894,31 +1142,25 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                 // Status badge
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
                   decoration: BoxDecoration(
-                    color: isOnline ? Colors.green : Colors.red,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
+                      IconButton(
+                        onPressed: () {
+                          FlutterPhoneDirectCaller.callNumber(
+                              driverPhone.toString());
+                        },
+                        icon: const Icon(Icons.call, color: Colors.white),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.all(6),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        isOnline ? 'Online' : 'Offline',
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
+                      )
                     ],
                   ),
                 )
@@ -927,6 +1169,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
               ],
             ),
             const SizedBox(height: 12),
+
             // Vehicle info
             Container(
               padding: const EdgeInsets.all(12),
@@ -937,28 +1180,12 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (item.motorBiker?.motorType != null &&
-                      item.motorBiker?.motorType != "null")
-                    Row(
-                      children: [
-                        Icon(Icons.motorcycle,
-                            size: 16, color: Colors.grey[600]),
-                        const SizedBox(width: 6),
-                        Text(
-                          item.motorBiker!.motorType ?? '-------',
-                          style: GoogleFonts.poppins(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
                   Row(
                     children: [
-                      Icon(Icons.numbers, size: 16, color: Colors.grey[600]),
+                      Icon(Icons.motorcycle, size: 16, color: Colors.grey[600]),
                       const SizedBox(width: 6),
                       Text(
-                        item.motorBiker!.plateNumber ?? '-------',
+                        item.vehicleType,
                         style: GoogleFonts.poppins(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
@@ -966,10 +1193,25 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                       ),
                     ],
                   ),
+                  if (item.hasRating)
+                    Row(
+                      children: [
+                        Icon(Icons.star, size: 16, color: Colors.amber),
+                        const SizedBox(width: 4),
+                        Text(
+                          item.formattedRating,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),
             const SizedBox(height: 12),
+
             // Distance and request button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -997,9 +1239,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        distance < 1
-                            ? '${(distance * 1000).toStringAsFixed(0)} m'
-                            : '${distance.toStringAsFixed(2)} km',
+                        item.formattedDistance, // Use the convenient getter
                         style: GoogleFonts.poppins(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
@@ -1043,6 +1283,380 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
         ),
       ),
     );
+  }
+// Empty state
+
+  Widget _buildDriverInfoCard(NearbyDriver motorbike) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            primaryColor.withOpacity(0.05),
+            primaryColor.withOpacity(0.02),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: primaryColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [primaryColor, primaryColor.withOpacity(0.7)],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.person, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ASSIGNED DRIVER',
+                  style: GoogleFonts.poppins(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                Text(
+                  motorbike.displayName,
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: primaryColor,
+                  ),
+                ),
+                Text(
+                  'Phone: ${motorbike.motorBikerPhone}',
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (motorbike.hasRating)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.amber[50],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.star, size: 14, color: Colors.amber[700]),
+                  const SizedBox(width: 4),
+                  Text(
+                    motorbike.formattedRating,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.amber[700],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+// 7. Update request creation in _buildActionButtons
+  Widget _buildActionButtons(NearbyDriver motorbike) {
+    return Row(
+      children: [
+        Expanded(
+          child: ElevatedButton.icon(
+            onPressed: () => Navigator.of(context).pop(),
+            icon: const Icon(Icons.close),
+            label: Text(
+              'Cancel',
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.red,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: Colors.red),
+              ),
+              elevation: 0,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          flex: 2,
+          child: BlocConsumer<CreateRequestBloc, CreateRequestState>(
+            listener: (context, state) {
+              if (state is CreateRequestError) {
+                showErrorAlert(state.message, context);
+              }
+              if (state is CreateRequestSuccess) {
+                showSuccessAlert("REQUEST SENT SUCCESSFULLY", context);
+                String requestID = state.myRequestsModel.data!.id.toString();
+
+                _initPendingFirebaseTrip(requestID, distancePrice, selectedUnitPrice, distanceOriginDestination);
+                Future.delayed(const Duration(milliseconds: 200), () {
+                  context.safeGoNamed(myRequests);
+                });
+              }
+            },
+            builder: (context, state) {
+              return ElevatedButton.icon(
+                onPressed: state is CreateRequestLoading
+                    ? null
+                    : () {
+                        if (locationSelected == '') {
+                          showErrorAlert("Please select a location", context);
+                        } else if (selectedService == '') {
+                          showErrorAlert("Please select a service", context);
+                        } else if (selectedUnitPrice == '') {
+                          showErrorAlert("Please select a unit price", context);
+                        } else {
+                          createRequestBloc.add(
+                            HandleCreateRequest(
+                              motorBikerId:
+                                  motorbike.motorBikerId, // Updated field
+                              clientId: userId!.toInt(),
+                              requestType: selectedService.toUpperCase(),
+                              requestedTime: DateTime.now(),
+                              originLocation: _currentAddress.toString(),
+                              destinationLocation: locationSelected,
+                              status: 'PENDING',
+                            ),
+                          );
+                        }
+                      },
+                icon: state is CreateRequestLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+                label: Text(
+                  state is CreateRequestLoading ? 'Sending...' : 'Send Request',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                  disabledBackgroundColor: primaryColor.withOpacity(0.5),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(AvailableDriverLocationEmpty state) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(32),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.search_off,
+                size: 64,
+                color: Colors.grey[400],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'No drivers available',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.message,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[500],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                if (sLat != 0.0 && sLng != 0.0) {
+                  _availableDriverLocationBloc.add(
+                    FetchAvailableDriverLocationEvent(
+                      latitude: sLat,
+                      longitude: sLng,
+                      radiusKm: distanceThreshold,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: Text(
+                'Try Again',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ).animate().fadeIn(duration: 400.ms).scale(delay: 200.ms),
+      ),
+    );
+  }
+
+// Error state
+  Widget _buildErrorState(AvailableDriverLocationError state) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 64,
+              color: Colors.red[400],
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Oops! Something went wrong',
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey[700],
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              state.message,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () {
+                if (sLat != 0.0 && sLng != 0.0) {
+                  _availableDriverLocationBloc.add(
+                    FetchAvailableDriverLocationEvent(
+                      latitude: sLat,
+                      longitude: sLng,
+                      radiusKm: distanceThreshold,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.refresh),
+              label: Text(
+                'Retry',
+                style: GoogleFonts.poppins(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ).animate().fadeIn(duration: 400.ms),
+      ),
+    );
+  }
+
+// Initial state
+  Widget _buildInitialDriversState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.location_searching,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Tap refresh to find drivers',
+            style: GoogleFonts.poppins(
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+// Helper method for time ago
+  String _getTimeAgo(DateTime dateTime) {
+    final difference = DateTime.now().difference(dateTime);
+
+    if (difference.inSeconds < 60) {
+      return 'just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else {
+      return '${difference.inDays}d ago';
+    }
   }
 
   final List<Map<String, dynamic>> favoriteAddresses = [
@@ -1196,8 +1810,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     _showRequestBottomSheet(context, motorbikerData);
   }
 
-  void _showRequestBottomSheet(
-      BuildContext context, AvailableDriverData motorbike) {
+  void _showRequestBottomSheet(BuildContext context, NearbyDriver motorbike) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1392,81 +2005,81 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget _buildDriverInfoCard(AvailableDriverData motorbike) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            primaryColor.withOpacity(0.05),
-            primaryColor.withOpacity(0.02),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: primaryColor.withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [primaryColor, primaryColor.withOpacity(0.7)],
-              ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.person, color: Colors.white, size: 24),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ASSIGNED DRIVER',
-                  style: GoogleFonts.poppins(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                Text(
-                  '${motorbike.motorBiker!.firstName} ${motorbike.motorBiker!.lastName}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: primaryColor,
-                  ),
-                ),
-                Text(
-                  'Phone: ${motorbike.motorBiker!.phone}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              FlutterPhoneDirectCaller.callNumber(
-                  motorbike.motorBiker!.phone.toString());
-            },
-            icon: const Icon(Icons.call),
-            style: IconButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.all(12),
-            ),
-          )
-              .animate(onPlay: (controller) => controller.repeat())
-              .shimmer(delay: 2000.ms, duration: 1500.ms),
-        ],
-      ),
-    );
-  }
+  // Widget _buildDriverInfoCard(NearbyDriver motorbike) {
+  //   return Container(
+  //     padding: const EdgeInsets.all(16),
+  //     decoration: BoxDecoration(
+  //       gradient: LinearGradient(
+  //         colors: [
+  //           primaryColor.withOpacity(0.05),
+  //           primaryColor.withOpacity(0.02),
+  //         ],
+  //       ),
+  //       borderRadius: BorderRadius.circular(16),
+  //       border: Border.all(color: primaryColor.withOpacity(0.2)),
+  //     ),
+  //     child: Row(
+  //       children: [
+  //         Container(
+  //           padding: const EdgeInsets.all(12),
+  //           decoration: BoxDecoration(
+  //             gradient: LinearGradient(
+  //               colors: [primaryColor, primaryColor.withOpacity(0.7)],
+  //             ),
+  //             borderRadius: BorderRadius.circular(12),
+  //           ),
+  //           child: const Icon(Icons.person, color: Colors.white, size: 24),
+  //         ),
+  //         const SizedBox(width: 12),
+  //         Expanded(
+  //           child: Column(
+  //             crossAxisAlignment: CrossAxisAlignment.start,
+  //             children: [
+  //               Text(
+  //                 'ASSIGNED DRIVER',
+  //                 style: GoogleFonts.poppins(
+  //                   fontSize: 10,
+  //                   fontWeight: FontWeight.w400,
+  //                   color: Colors.grey[600],
+  //                 ),
+  //               ),
+  //               Text(
+  //                 '${motorbike.motorBiker!.firstName} ${motorbike.motorBiker!.lastName}',
+  //                 style: GoogleFonts.poppins(
+  //                   fontSize: 16,
+  //                   fontWeight: FontWeight.w600,
+  //                   color: primaryColor,
+  //                 ),
+  //               ),
+  //               Text(
+  //                 'Phone: ${motorbike.motorBiker!.phone}',
+  //                 style: GoogleFonts.poppins(
+  //                   fontSize: 13,
+  //                   fontWeight: FontWeight.w400,
+  //                   color: Colors.grey[600],
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ),
+  //         IconButton(
+  //           onPressed: () {
+  //             FlutterPhoneDirectCaller.callNumber(
+  //                 motorbike.motorBiker!.phone.toString());
+  //           },
+  //           icon: const Icon(Icons.call),
+  //           style: IconButton.styleFrom(
+  //             backgroundColor: Colors.green,
+  //             foregroundColor: Colors.white,
+  //             padding: const EdgeInsets.all(12),
+  //           ),
+  //         )
+  //             .animate(onPlay: (controller) => controller.repeat())
+  //             .shimmer(delay: 2000.ms, duration: 1500.ms),
+  //       ],
+  //     ),
+  //   );
+  // }
 
   Widget _buildSearchButton({
     required IconData icon,
@@ -1609,9 +2222,9 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     required Color color,
   }) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, color: color, size: 20),
-        const SizedBox(height: 4),
+         
         Text(
           label,
           style: GoogleFonts.poppins(
@@ -1633,106 +2246,106 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget _buildActionButtons(AvailableDriverData motorbike) {
-    return Row(
-      children: [
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close),
-            label: Text(
-              'Cancel',
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.red,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(color: Colors.red),
-              ),
-              elevation: 0,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          flex: 2,
-          child: BlocConsumer<CreateRequestBloc, CreateRequestState>(
-            listener: (context, state) {
-              if (state is CreateRequestError) {
-                showErrorAlert(state.message, context);
-              }
-              if (state is CreateRequestSuccess) {
-                showSuccessAlert("REQUEST SENT SUCCESSFULLY", context);
-                Future.delayed(const Duration(milliseconds: 200), () {
-                  context.safeGoNamed(myRequests);
-                });
-              }
-            },
-            builder: (context, state) {
-              return ElevatedButton.icon(
-                onPressed: state is CreateRequestLoading
-                    ? null
-                    : () {
-                        if (locationSelected == '') {
-                          showErrorAlert("Please select a location", context);
-                        } else if (selectedService == '') {
-                          showErrorAlert("Please select a service", context);
-                        } else if (selectedUnitPrice == '') {
-                          showErrorAlert("Please select a unit price", context);
-                        } else {
-                          createRequestBloc.add(
-                            HandleCreateRequest(
-                              motorBikerId: motorbike.motorBiker!.id!.toInt(),
-                              clientId: userId!.toInt(),
-                              requestType: selectedService.toUpperCase(),
-                              requestedTime: DateTime.now(),
-                              originLocation: _currentAddress.toString(),
-                              destinationLocation: locationSelected,
-                              status: 'PENDING',
-                            ),
-                          );
-                        }
-                      },
-                icon: state is CreateRequestLoading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.send),
-                label: Text(
-                  state is CreateRequestLoading ? 'Sending...' : 'Send Request',
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 0,
-                  disabledBackgroundColor: primaryColor.withOpacity(0.5),
-                ),
-              );
-            },
-          ),
-        ),
-      ],
-    );
-  }
+  // Widget _buildActionButtons(NearbyDriver motorbike) {
+  //   return Row(
+  //     children: [
+  //       Expanded(
+  //         child: ElevatedButton.icon(
+  //           onPressed: () => Navigator.of(context).pop(),
+  //           icon: const Icon(Icons.close),
+  //           label: Text(
+  //             'Cancel',
+  //             style: GoogleFonts.poppins(
+  //               fontSize: 14,
+  //               fontWeight: FontWeight.w600,
+  //             ),
+  //           ),
+  //           style: ElevatedButton.styleFrom(
+  //             backgroundColor: Colors.white,
+  //             foregroundColor: Colors.red,
+  //             padding: const EdgeInsets.symmetric(vertical: 16),
+  //             shape: RoundedRectangleBorder(
+  //               borderRadius: BorderRadius.circular(12),
+  //               side: const BorderSide(color: Colors.red),
+  //             ),
+  //             elevation: 0,
+  //           ),
+  //         ),
+  //       ),
+  //       const SizedBox(width: 12),
+  //       Expanded(
+  //         flex: 2,
+  //         child: BlocConsumer<CreateRequestBloc, CreateRequestState>(
+  //           listener: (context, state) {
+  //             if (state is CreateRequestError) {
+  //               showErrorAlert(state.message, context);
+  //             }
+  //             if (state is CreateRequestSuccess) {
+  //               showSuccessAlert("REQUEST SENT SUCCESSFULLY", context);
+  //               Future.delayed(const Duration(milliseconds: 200), () {
+  //                 context.safeGoNamed(myRequests);
+  //               });
+  //             }
+  //           },
+  //           builder: (context, state) {
+  //             return ElevatedButton.icon(
+  //               onPressed: state is CreateRequestLoading
+  //                   ? null
+  //                   : () {
+  //                       if (locationSelected == '') {
+  //                         showErrorAlert("Please select a location", context);
+  //                       } else if (selectedService == '') {
+  //                         showErrorAlert("Please select a service", context);
+  //                       } else if (selectedUnitPrice == '') {
+  //                         showErrorAlert("Please select a unit price", context);
+  //                       } else {
+  //                         createRequestBloc.add(
+  //                           HandleCreateRequest(
+  //                             motorBikerId: motorbike.motorBiker!.id!.toInt(),
+  //                             clientId: userId!.toInt(),
+  //                             requestType: selectedService.toUpperCase(),
+  //                             requestedTime: DateTime.now(),
+  //                             originLocation: _currentAddress.toString(),
+  //                             destinationLocation: locationSelected,
+  //                             status: 'PENDING',
+  //                           ),
+  //                         );
+  //                       }
+  //                     },
+  //               icon: state is CreateRequestLoading
+  //                   ? const SizedBox(
+  //                       width: 20,
+  //                       height: 20,
+  //                       child: CircularProgressIndicator(
+  //                         color: Colors.white,
+  //                         strokeWidth: 2,
+  //                       ),
+  //                     )
+  //                   : const Icon(Icons.send),
+  //               label: Text(
+  //                 state is CreateRequestLoading ? 'Sending...' : 'Send Request',
+  //                 style: GoogleFonts.poppins(
+  //                   fontSize: 14,
+  //                   fontWeight: FontWeight.w600,
+  //                 ),
+  //               ),
+  //               style: ElevatedButton.styleFrom(
+  //                 backgroundColor: primaryColor,
+  //                 foregroundColor: Colors.white,
+  //                 padding: const EdgeInsets.symmetric(vertical: 16),
+  //                 shape: RoundedRectangleBorder(
+  //                   borderRadius: BorderRadius.circular(12),
+  //                 ),
+  //                 elevation: 0,
+  //                 disabledBackgroundColor: primaryColor.withOpacity(0.5),
+  //               ),
+  //             );
+  //           },
+  //         ),
+  //       ),
+  //     ],
+  //   );
+  // }
 
   IconData _getServiceIcon(String service) {
     switch (service.toUpperCase()) {
@@ -2148,31 +2761,31 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
   Widget _buildServiceGrid() {
     final services = [
       {
-        "title": "RIDE",
+        "title": "Bodaboda",
         "image": "assets/images/motorcycle-white.png",
         "service": "Ride",
         "gradient": [Colors.blue, Colors.cyan],
       },
       {
-        "title": "Courier",
+        "title": "Delivery Package",
         "image": "assets/images/shipping.png",
         "service": "Courier",
         "gradient": [Colors.orange, Colors.deepOrange],
       },
       {
-        "title": "Tuk Tuk",
+        "title": "Bajaji",
         "image": "assets/images/tuk-tuk.png",
         "service": "Tuk_Tuk",
         "gradient": [Colors.green, Colors.teal],
       },
       {
-        "title": "RIFANI",
+        "title": "Deliveru TukTuk",
         "image": "assets/images/lifan.png",
         "service": "RIFANI",
         "gradient": [Colors.purple, Colors.deepPurple],
       },
       {
-        "title": "Taxi Cab",
+        "title": "Taxi",
         "image": "assets/images/taxi_cab.png",
         "service": "TaxiCab",
         "gradient": [Colors.amber, Colors.orange],
@@ -2222,8 +2835,25 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           setState(() {
             selectedService = serviceKey;
           });
-          _showMotorbikersBottomSheet(context);
-          _availableDriverLocationBloc.add(FetchAvailableDriverLocationEvent());
+          // Ensure we have valid location before showing drivers
+          if (sLat == 0.0 || sLng == 0.0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('Getting your location...'),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            );
+            _getCurrentLocation().then((_) {
+              if (sLat != 0.0 && sLng != 0.0) {
+                _showMotorbikersBottomSheet(context);
+              }
+            });
+          } else {
+            _showMotorbikersBottomSheet(context);
+          }
         },
         borderRadius: BorderRadius.circular(20),
         splashColor: Colors.white.withOpacity(0.1),
@@ -2283,7 +2913,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                 // Content with reduced padding
                 Padding(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 40, vertical: 14),
+                      const EdgeInsets.symmetric(horizontal: 40, vertical: 8),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -2309,8 +2939,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                         ),
                         child: Image.asset(
                           image,
-                          width: 50,
-                          height: 50,
+                          width: 45,
+                          height: 45,
                           color: Colors.white,
                           fit: BoxFit.contain,
                         ),
@@ -2329,7 +2959,7 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: GoogleFonts.poppins(
-                          fontSize: 16,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: Colors.white,
                           height: 1.2,
@@ -2635,8 +3265,8 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
                     children: [
                       if (isActive)
                         Expanded(
-                            child: _buildActionButton(
-                                currentRequestStatus, statusColor, activeRequest!)),
+                            child: _buildActionButton(currentRequestStatus,
+                                statusColor, activeRequest!)),
                       const SizedBox(width: 12),
                     ],
                   ),
@@ -2733,20 +3363,94 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
     ).animate().fadeIn(duration: 400.ms).slideY(begin: -0.1, end: 0);
   }
 
-  Widget _buildActionButton(String status, Color statusColor, ActiveRequestData request) {
-    switch (status.toUpperCase()) {
-      case "PENDING":
-      case "SEARCHING_DRIVER":
-        return _ActionButton(
-          icon: Icons.refresh,
-          label: "Refresh",
-          color: statusColor,
-          request: request,
-          onPressed: _handleRefresh,
-        );
+  // Widget _buildActionButton(
+  //     String status, Color statusColor, ActiveRequestData request) {
+  //   switch (status.toUpperCase()) {
+  //     case "PENDING":
+  //     case "SEARCHING_DRIVER":
+  //       return _ActionButton(
+  //         icon: Icons.refresh,
+  //         label: "Refresh",
+  //         color: statusColor,
+  //         request: request,
+  //         onPressed: _handleRefresh,
+  //       );
 
-      case "APPROVED":
-        return BlocConsumer<UpdateSentRequestStatusBloc,
+  //     case "APPROVED":
+  //       return BlocConsumer<UpdateSentRequestStatusBloc,
+  //           UpdateSentRequestStatusState>(
+  //         listener: (context, state) {
+  //           if (state is UpdateSentRequestStatusSuccess) {
+  //             showSuccessAlert(
+  //               state.updateSentRequestModel.message.toString(),
+  //               context,
+  //             );
+  //             _handleRefresh();
+  //           }
+  //           if (state is UpdateSentRequestStatusError) {
+  //             showErrorAlert(state.message.toString(), context);
+  //           }
+  //         },
+  //         builder: (context, state) {
+  //           return _ActionButton(
+  //             icon: Icons.cancel_outlined,
+  //             label: 'Cancel',
+  //             color: redColor,
+  //             request: request,
+  //             onPressed: () {
+  //               _showCancelBottomSheet(context, request.id!.toInt());
+  //             },
+  //           );
+  //         },
+  //       );
+
+  //     case "ASSIGNED":
+  //     case "ACCEPTED":
+  //     case "DRIVER_ARRIVING":
+  //       return _ActionButton(
+  //         icon: Icons.call,
+  //         label: "Call Driver",
+  //         color: Colors.green,
+  //         request: request,
+  //         onPressed: _callDriver,
+  //       );
+
+  //     case "IN_PROGRESS":
+  //     case "ONGOING":
+  //       return _ActionButton(
+  //         icon: Icons.location_searching_rounded,
+  //         label: "Track Ride",
+  //         color: Colors.orange,
+  //         request: request,
+  //         onPressed: () => _trackRide(context, request),
+  //       );
+
+  //     default:
+  //       return const SizedBox.shrink();
+  //   }
+  // }
+
+  Widget _buildActionButton(
+  String status,
+  Color statusColor,
+  ActiveRequestData request,
+) {
+  switch (status.toUpperCase()) {
+    case "PENDING":
+    case "SEARCHING_DRIVER":
+      return _ActionButton(
+        icon: Icons.refresh,
+        label: "Refresh",
+        color: statusColor,
+        request: request,
+        onPressed: _handleRefresh,
+      );
+
+    case "APPROVED":
+  return Row(
+    children: [
+      Expanded(
+        child: BlocConsumer<UpdateSentRequestStatusBloc,
             UpdateSentRequestStatusState>(
           listener: (context, state) {
             if (state is UpdateSentRequestStatusSuccess) {
@@ -2763,43 +3467,74 @@ class _HomeState extends State<Home> with SingleTickerProviderStateMixin {
           builder: (context, state) {
             return _ActionButton(
               icon: Icons.cancel_outlined,
-              label: 'Cancel',
+              label: "Cancel",
               color: redColor,
               request: request,
               onPressed: () {
-                _showCancelBottomSheet(context, request.id!.toInt());
+                _showCancelBottomSheet(
+                  context,
+                  request.id!.toInt(),
+                );
               },
             );
           },
-        );
-
-      case "ASSIGNED":
-      case "ACCEPTED":
-      case "DRIVER_ARRIVING":
-        return _ActionButton(
-          icon: Icons.call,
-          label: "Call Driver",
-          color: Colors.green,
-          request: request,
-          onPressed: _callDriver,
-        );
-
-      case "IN_PROGRESS":
-      case "ONGOING":
-        return _ActionButton(
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: _ActionButton(
           icon: Icons.location_searching_rounded,
           label: "Track Ride",
           color: Colors.orange,
           request: request,
           onPressed: () => _trackRide(context, request),
-        );
+        ),
+      ),
+    ],
+  );
+  case "ASSIGNED":
+    case "ACCEPTED":
+    case "DRIVER_ARRIVING":
+      return Row(
+        children: [
+          Expanded(
+            child: _ActionButton(
+              icon: Icons.call,
+              label: "Call Driver",
+              color: Colors.green,
+              request: request,
+              onPressed: _callDriver,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: _ActionButton(
+              icon: Icons.location_searching_rounded,
+              label: "Track Ride",
+              color: Colors.orange,
+              request: request,
+              onPressed: () => _trackRide(context, request),
+            ),
+          ),
+        ],
+      );
 
-      default:
-        return const SizedBox.shrink();
-    }
+    case "IN_PROGRESS":
+    case "ONGOING":
+      return _ActionButton(
+        icon: Icons.location_searching_rounded,
+        label: "Track Ride",
+        color: Colors.orange,
+        request: request,
+        onPressed: () => _trackRide(context, request),
+      );
+
+    default:
+      return const SizedBox.shrink();
   }
+}
 
-    // Add this new method to show the cancel bottom sheet
+  // Add this new method to show the cancel bottom sheet
   void _showCancelBottomSheet(BuildContext context, int requestId) {
     showModalBottomSheet(
       context: context,
@@ -3004,20 +3739,20 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return ElevatedButton.icon(
       onPressed: onPressed,
-      icon: Icon(icon, size: 18),
+      icon: Icon(icon, size: 14),
       label: Text(
         label,
         style: GoogleFonts.poppins(
-          fontSize: 13,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
         ),
       ),
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: color,
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           side: BorderSide(color: color),
         ),
         elevation: 0,

@@ -174,7 +174,7 @@ class DriverProfile extends StatelessWidget {
                 backgroundColor: primaryColor,
                 width: 100,
                 onTap: () async {
-                  FlutterPhoneDirectCaller.callNumber("${driver.driverPhone}");
+                  FlutterPhoneDirectCaller.callNumber("+${driver.driverPhone}");
                 },
               ),
               MyOutlineButton(

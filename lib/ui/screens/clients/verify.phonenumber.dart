@@ -1,8 +1,8 @@
+// ignore_for_file: use_super_parameters, deprecated_member_use
+
 import 'dart:async';
 import 'package:speed_ios/routes/routes.provider.dart';
-import 'package:easy_localization/easy_localization.dart';
 import 'package:pinput/pinput.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -15,9 +15,13 @@ import '../../../states/verify/verify_otp_bloc.dart';
 import '../../../utils/colors.dart';
 import '../../../utils/notifiers.dart';
 import '../../widgets/buttons/button.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class VerifyPhoneNumber extends StatefulWidget {
-  const VerifyPhoneNumber({Key? key}) : super(key: key);
+  final String? deviceToken;
+  const VerifyPhoneNumber({Key? key,  this.deviceToken}) : super(key: key);
 
   @override
   State<VerifyPhoneNumber> createState() => _VerifyPhoneNumberState();
@@ -30,6 +34,9 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
   final TextEditingController _phoneNumberController = TextEditingController();
+
+  final _firestore = FirebaseFirestore.instance;
+
 
   String? token;
   String? countryCode;
@@ -47,6 +54,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
     registerClientBloc = BlocProvider.of<RegisterClientBloc>(context);
     verifyOtpBloc = BlocProvider.of<VerifyOtpBloc>(context);
     _initializeAnimations();
+    token = widget.deviceToken;
   }
 
   void _initializeAnimations() {
@@ -64,6 +72,19 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
   }
+
+
+  void sendVerificationCode(String userId, String token) async {
+    saveToken(token.toString(), userId);
+  }
+
+  void saveToken(String token, String userId) async {
+    await _firestore
+        .collection('clientTokens')
+        .doc(userId)
+        .set({'token': token});
+  }
+
 
   @override
   void dispose() {
@@ -215,10 +236,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.of(context).pop();
-                          // Send initial OTP request
-                          // verifyOtpBloc.add(HandleResendOtp(
-                          //   phone: phoneNumber!.replaceAll(' ', ''),
-                          // ));
+                      
                           registerClientBloc.add(
                             HandleRegisterClientInformation(
                               phone: phoneNumber!,
@@ -523,27 +541,50 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                     ).animate().fadeIn(delay: 500.ms),
                     const SizedBox(height: 32),
                     BlocConsumer<VerifyOtpBloc, VerifyOtpState>(
-                      listener: (context, state) {
-                        if (state is VerifyOtpSuccess) {
+                      listener: (context, state) async {
+                        
+                     
+
+                      if (state is VerifyOtpSuccess) {
                           Navigator.pop(context);
                           countdownTimer?.cancel();
 
-                          setState(() {
-                            isRegisterLoading = true;
-                          });
+                          final data = state.verifyOtpModel.data;
 
-                          String obtainedFname =
-                              state.verifyOtpModel.data!.fname.toString();
-                          String obtainedLname =
-                              state.verifyOtpModel.data!.lname.toString();
-                          String obtainedClientId =
-                              state.verifyOtpModel.data!.id.toString();
-                          if (obtainedFname != "null" &&
-                              obtainedLname != "null") {
+                          final String obtainedFname = data?.fname?.toString() ?? '';
+                          final String obtainedLname = data?.lname?.toString() ?? '';
+                          final String obtainedClientId = data?.id?.toString() ?? '';
+
+                          if (obtainedClientId.isEmpty) {
+                            showErrorAlert('Invalid user data received', context);
+                            return;
+                          }
+
+                          // Save FCM token to Firestore
+                          sendVerificationCode(obtainedClientId, token ?? '');
+
+                          final prefs = await SharedPreferences.getInstance();
+
+                          final bool hasProfile = obtainedFname.isNotEmpty &&
+                              obtainedFname != 'null' &&
+                              obtainedLname.isNotEmpty &&
+                              obtainedLname != 'null';
+
+                          // Always save currentUser
+                          await prefs.setString('currentUser', jsonEncode(data?.toJson()));
+
+                          if (hasProfile) {
+                            // Profile complete → also save currentUserProfile
+                            await prefs.setString('currentUserProfile', jsonEncode(data?.toJson()));
+                            if (!mounted) return;
                             context.safeGoNamed(home);
                           } else {
-                            context.safeGoNamed(clientProfile,
-                                params: {'clientId': obtainedClientId});
+                            // Profile incomplete → skip currentUserProfile so splash redirects correctly
+                            if (!mounted) return;
+                            context.safeGoNamed(clientProfile, params: {
+                              'clientId': obtainedClientId,
+                              'deviceToken': token ?? '',
+                            });
                           }
                         }
                         if (state is VerifyOtpError) {
@@ -671,7 +712,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                         child: Image.asset(
                           "assets/images/verified.png",
                           scale: 3.5,
-                          color: whiteColor,
+                        
                         ),
                       ),
                     )
@@ -704,131 +745,8 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                       textAlign: TextAlign.center,
                     ).animate().fadeIn(delay: 400.ms, duration: 600.ms),
                     const SizedBox(height: 50),
-                    // Form(
-                    //   key: formKey,
-                    //   child: InternationalPhoneNumberInput(
-                    //     height: 62,
-                    //     controller: _phoneNumberController,
-                    //     inputFormatters: const [],
-                    //     formatter: MaskedInputFormatter('### ### ###'),
-                    //     initCountry: CountryCodeModel(
-                    //       name: "Rwanda",
-                    //       dial_code: "+250",
-                    //       code: "RW",
-                    //     ),
-                    //     betweenPadding: 12,
-                    //     onInputChanged: (phone) {
-                    //       setState(() {
-                    //         countryCode = phone.code;
-                    //         phoneNumber = phone.rawFullNumber.toString();
-                    //       });
-                    //     },
-                    //     loadFromJson: loadFromJson,
-                    //     dialogConfig: DialogConfig(
-                    //       backgroundColor: const Color(0xFF444448),
-                    //       searchBoxBackgroundColor: const Color(0xFF56565a),
-                    //       searchBoxIconColor: const Color(0xFFFAFAFA),
-                    //       countryItemHeight: 50,
-                    //       flatFlag: true,
-                    //       topBarColor: primaryColor,
-                    //       selectedItemColor: const Color(0xFF56565a),
-                    //       selectedIcon: const Padding(
-                    //         padding: EdgeInsets.only(left: 10),
-                    //         child:
-                    //             Icon(Icons.check_circle, color: primaryColor),
-                    //       ),
-                    //       textStyle: GoogleFonts.poppins(
-                    //         color: const Color(0xFFFAFAFA).withOpacity(0.7),
-                    //         fontSize: 14,
-                    //         fontWeight: FontWeight.w600,
-                    //       ),
-                    //       searchBoxTextStyle: GoogleFonts.poppins(
-                    //         color: const Color(0xFFFAFAFA).withOpacity(0.7),
-                    //         fontSize: 14,
-                    //         fontWeight: FontWeight.w600,
-                    //       ),
-                    //       titleStyle: GoogleFonts.poppins(
-                    //         color: const Color(0xFFFAFAFA),
-                    //         fontSize: 18,
-                    //         fontWeight: FontWeight.w700,
-                    //       ),
-                    //       searchBoxHintStyle: GoogleFonts.poppins(
-                    //         color: const Color(0xFFFAFAFA).withOpacity(0.7),
-                    //         fontSize: 12,
-                    //         fontWeight: FontWeight.w600,
-                    //       ),
-                    //     ),
-                    //     countryConfig: CountryConfig(
-                    //       decoration: BoxDecoration(
-                    //         borderRadius: BorderRadius.circular(16),
-                    //         color: whiteColor,
-                    //         border: Border.all(
-                    //             width: 2, color: primaryColor.withOpacity(0.2)),
-                    //         boxShadow: [
-                    //           BoxShadow(
-                    //             color: primaryColor.withOpacity(0.05),
-                    //             blurRadius: 10,
-                    //             offset: const Offset(0, 4),
-                    //           ),
-                    //         ],
-                    //       ),
-                    //       flatFlag: true,
-                    //       noFlag: false,
-                    //       flagSize: 28,
-                    //       textStyle: GoogleFonts.poppins(
-                    //         color: primaryColor,
-                    //         fontSize: 14,
-                    //         fontWeight: FontWeight.w600,
-                    //       ),
-                    //     ),
-                    //     validator: (number) {
-                    //       if (number.number.isEmpty) {
-                    //         return "The phone number cannot be left empty";
-                    //       }
-                    //       return null;
-                    //     },
-                    //     phoneConfig: PhoneConfig(
-                    //       focusedColor: primaryColor,
-                    //       enabledColor: Colors.grey.shade300,
-                    //       autoFocus: true,
-                    //       errorColor: redColor,
-                    //       labelStyle: null,
-                    //       labelText: null,
-                    //       floatingLabelStyle: null,
-                    //       focusNode: null,
-                    //       radius: 16,
-                    //       hintText: "eg: (+250) 000 000 000",
-                    //       borderWidth: 2,
-                    //       backgroundColor: Colors.transparent,
-                    //       decoration: null,
-                    //       popUpErrorText: true,
-                    //       showCursor: true,
-                    //       textInputAction: TextInputAction.done,
-                    //       autovalidateMode: AutovalidateMode.onUserInteraction,
-                    //       errorTextMaxLength: 2,
-                    //       errorPadding: const EdgeInsets.only(top: 14),
-                    //       errorStyle: GoogleFonts.poppins(
-                    //         color: redColor,
-                    //         fontSize: 12,
-                    //         height: 1,
-                    //       ),
-                    //       textStyle: GoogleFonts.poppins(
-                    //         color: primaryColor,
-                    //         fontSize: 16,
-                    //         fontWeight: FontWeight.w500,
-                    //       ),
-                    //       hintStyle: GoogleFonts.poppins(
-                    //         color: Colors.black.withOpacity(0.4),
-                    //         fontSize: 14,
-                    //         fontWeight: FontWeight.w400,
-                    //       ),
-                    //     ),
-                    //   ),
-                    // )
-                    //     .animate()
-                    //     .fadeIn(delay: 500.ms, duration: 600.ms)
-                    //     .slideX(begin: -0.2, end: 0),
-                    // Phone Input Form
+                   
+                      // Phone Input Form
                     Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
@@ -853,22 +771,20 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                                 // inputFormatters: const [],
                                 // formatter: MaskedInputFormatter('### ### ###'),
                                 initCountry: CountryCodeModel(
-                                    name: "Rwanda",
-                                    dial_code: "+250",
-                                    code: "RW"),
+                                    name: "Tanzania",
+                                    dial_code: "+255",
+                                    code: "TZ"),
                                 betweenPadding: 12,
                                 onInputChanged: (phone) {
                                   setState(() {
                                     countryCode = phone.code;
-                                    phoneNumber =
-                                        phone.rawFullNumber.toString();
+                                    phoneNumber = phone.rawFullNumber.toString();
                                   });
                                 },
                                 loadFromJson: loadFromJson,
                                 dialogConfig: DialogConfig(
                                   backgroundColor: const Color(0xFF444448),
-                                  searchBoxBackgroundColor:
-                                      const Color(0xFF56565a),
+                                  searchBoxBackgroundColor: const Color(0xFF56565a),
                                   searchBoxIconColor: const Color(0xFFFAFAFA),
                                   countryItemHeight: 50,
                                   flatFlag: true,
@@ -876,17 +792,14 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                                   selectedItemColor: const Color(0xFF56565a),
                                   selectedIcon: const Padding(
                                     padding: EdgeInsets.only(left: 10),
-                                    child: Icon(Icons.check_circle,
-                                        color: Colors.greenAccent),
+                                    child: Icon(Icons.check_circle, color: Colors.greenAccent),
                                   ),
                                   textStyle: GoogleFonts.poppins(
-                                      color: const Color(0xFFFAFAFA)
-                                          .withOpacity(0.7),
+                                      color: const Color(0xFFFAFAFA).withOpacity(0.7),
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600),
                                   searchBoxTextStyle: GoogleFonts.poppins(
-                                      color: const Color(0xFFFAFAFA)
-                                          .withOpacity(0.7),
+                                      color: const Color(0xFFFAFAFA).withOpacity(0.7),
                                       fontSize: 14,
                                       fontWeight: FontWeight.w600),
                                   titleStyle: GoogleFonts.poppins(
@@ -894,8 +807,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                                       fontSize: 18,
                                       fontWeight: FontWeight.w700),
                                   searchBoxHintStyle: GoogleFonts.poppins(
-                                      color: const Color(0xFFFAFAFA)
-                                          .withOpacity(0.7),
+                                      color: const Color(0xFFFAFAFA).withOpacity(0.7),
                                       fontSize: 12,
                                       fontWeight: FontWeight.w600),
                                 ),
@@ -936,8 +848,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                                   autoFocus: false,
                                   showCursor: true,
                                   textInputAction: TextInputAction.done,
-                                  autovalidateMode:
-                                      AutovalidateMode.onUserInteraction,
+                                  autovalidateMode: AutovalidateMode.onUserInteraction,
                                   errorTextMaxLength: 2,
                                   errorPadding: const EdgeInsets.only(top: 14),
                                   errorStyle: GoogleFonts.poppins(
@@ -955,7 +866,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                                 ),
                               ),
                               const SizedBox(height: 24),
-
+                              
                               // Terms and Conditions
                               Container(
                                 padding: const EdgeInsets.all(16),
@@ -974,16 +885,12 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                                       color: primaryColor,
                                       size: 28,
                                     )
-                                        .animate(
-                                            onPlay: (controller) =>
-                                                controller.repeat())
-                                        .shimmer(
-                                            delay: 2000.ms, duration: 2000.ms),
+                                        .animate(onPlay: (controller) => controller.repeat())
+                                        .shimmer(delay: 2000.ms, duration: 2000.ms),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             "By signing up, you agree to our",
@@ -1058,7 +965,7 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                           setState(() {
                             isRegisterLoading = false;
                           });
-                          _showOtpVerificationBottomSheet(context);
+                        _showOtpVerificationBottomSheet(context);
                         }
                       },
                       builder: (context, state) {
@@ -1072,6 +979,8 @@ class _VerifyPhoneNumberState extends State<VerifyPhoneNumber>
                               showErrorAlert(
                                   "Please enter valid phone number", context);
                             } else {
+
+                          
                               _showPhoneConfirmationDialog(context);
                             }
                           },

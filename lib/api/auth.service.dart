@@ -126,7 +126,7 @@ class AuthService {
   }
 
   Future<UpdateClientInfoModel> postUpdateClientInfo(
-      String clientId, String fname, String lname) async {
+      String clientId, String fname, String lname, String deviceToken) async {
     SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
     Map<String, String> headers = {'Content-Type': 'application/json'};
     print(clientId.toString());
@@ -137,7 +137,8 @@ class AuthService {
         body: json.encode({
           'fname': fname.toString(),
           'lname': lname.toString(),
-          'status': "ACTIVE"
+          'status': "ACTIVE",
+          'deviceToken': deviceToken.toString()
         }));
 
     Map<String, dynamic> results = jsonDecode(response.body);

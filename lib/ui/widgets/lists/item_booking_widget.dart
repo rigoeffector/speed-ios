@@ -369,7 +369,7 @@ class BookingItem extends StatelessWidget {
                                     InkWell(
                                       onTap: () async {
                                         FlutterPhoneDirectCaller.callNumber(
-                                            driverPhone!);
+                                            "+$driverPhone!");
                                       },
                                       child: Container(
                                         padding: const EdgeInsets.symmetric(

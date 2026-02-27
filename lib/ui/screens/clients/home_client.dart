@@ -1,1034 +1,1237 @@
-// ignore_for_file: library_private_types_in_public_api, use_build_context_synchronously, prefer_interpolation_to_compose_strings
+// client/advanced_client_tracking_screen.dart
+// Advanced Client App - Real-time driver tracking with premium UI
+
+// ignore_for_file: library_private_types_in_public_api, use_build_context_synchronously
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui';
-import 'package:speed_ios/api/auth.service.dart';
-import 'package:speed_ios/routes/routes.names.dart';
-import 'package:speed_ios/routes/routes.provider.dart';
-import 'package:speed_ios/ui/widgets/buttons/icon_button_normal.dart';
-import 'package:speed_ios/utils/notifiers.dart';
+
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_phone_direct_caller/flutter_phone_direct_caller.dart';
-import 'package:flutter_spinkit/flutter_spinkit.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:google_map_polyline_new/google_map_polyline_new.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import '../../../states/requests/update/update_sent_request_status_bloc.dart';
-import '../../../utils/colors.dart';
 import 'package:http/http.dart' as http;
 
-class ClientDirections extends StatefulWidget {
+// ─── Design Tokens ────────────────────────────────────────────────────────────
+const _kPrimary = Color(0xFF10B981);
+const _kAccent = Color(0xFF07B363);
+const _kGreen = Color(0xFF00D4A3);
+const _kOrange = Color(0xFFFF6B35);
+const _kSurface = Color(0xFFF8F7FF);
+const _kCard = Color(0xFFFFFFFF);
+
+// ─── Status Config ────────────────────────────────────────────────────────────
+class _StatusConfig {
+  final String emoji;
+  final String title;
+  final String subtitle;
+  final Color color;
+  const _StatusConfig(this.emoji, this.title, this.subtitle, this.color);
+}
+
+const _statusConfigs = {
+  'started': _StatusConfig('✅', 'Driver Accepted', 'Your driver is getting ready', _kAccent),
+  'driver_arriving': _StatusConfig('🚗', 'Driver On the Way', 'Heading to your pickup', _kOrange),
+  'arrived_at_pickup': _StatusConfig('📍', 'Driver Arrived', 'Your driver is waiting for you', _kGreen),
+  'client_on_board': _StatusConfig('🎯', 'Trip in Progress', "You're on your way!", _kAccent),
+  'completed': _StatusConfig('🏁', 'Arrived!', 'You have reached your destination', _kGreen),
+  'cancelled': _StatusConfig('❌', 'Trip Cancelled', 'This trip has been cancelled', Colors.red),
+  'cancelled_by_client': _StatusConfig('❌', 'Trip Cancelled', 'Trip was cancelled', Colors.red),
+};
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+class AdvancedClientTrackingScreen extends StatefulWidget {
   final String? requestId;
   final String? clientPhone;
   final String? clientNames;
   final String? destinationLocation;
   final String? originLocation;
+  final String? driverName;
+  final String? driverPhone;
 
-  const ClientDirections(
-      {super.key,
-      this.requestId,
-      this.clientPhone,
-      this.clientNames,
-      this.destinationLocation,
-      this.originLocation});
+  const AdvancedClientTrackingScreen({
+    super.key,
+     this.requestId,
+    this.clientPhone,
+    this.clientNames,
+    this.destinationLocation,
+    this.originLocation,
+    this.driverName,
+    this.driverPhone,
+  });
 
   @override
-  _ClientDirectionsState createState() => _ClientDirectionsState();
+  _AdvancedClientTrackingScreenState createState() =>
+      _AdvancedClientTrackingScreenState();
 }
 
-class _ClientDirectionsState extends State<ClientDirections>
+class _AdvancedClientTrackingScreenState
+    extends State<AdvancedClientTrackingScreen>
     with TickerProviderStateMixin {
-  GoogleMapController? _controllers;
-  BitmapDescriptor? clientIcon;
-  BitmapDescriptor? driverIcon;
-  BitmapDescriptor? destinationIcon;
-  final List<Marker> marker = [];
-  final List<Circle> circle = [];
-  Completer<GoogleMapController> controllerGoogleMapCompleter = Completer();
-  UpdateSentRequestStatusBloc updateSentRequestStatusBloc =
-      UpdateSentRequestStatusBloc(
-          UpdateSentRequestStatusInitial(), AuthService());
-  final List<Marker> _list = [];
-  late AnimationController _animationController;
-  late AnimationController _pulseController;
-  late AnimationController _shimmerController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _pulseAnimation;
 
+  // ─── Controllers ────────────────────────────────────────────────────────
+  GoogleMapController? _mapController;
+  late AnimationController _pulseCtrl;
+  late AnimationController _slideCtrl;
+  late AnimationController _bounceCtrl;
+  late Animation<double> _pulseAnim;
+  late Animation<Offset> _slideAnim;
+  late Animation<double> _bounceAnim;
+
+  // ─── Firebase ───────────────────────────────────────────────────────────
+  final _db = FirebaseDatabase.instance;
+  StreamSubscription<DatabaseEvent>? _tripSub;
+  StreamSubscription<DatabaseEvent>? _locationSub;
+  StreamSubscription<DatabaseEvent>? _metricsSub;
+
+  // ─── State ──────────────────────────────────────────────────────────────
+  String _tripStatus = 'started';
+  bool _driverConnected = false;
+  bool _mapReady = false;
+  bool _isLoading = true;
+  bool _sheetExpanded = false;
+  bool _routeDrawn = false;
+  int _ratingStars = 5;
+
+  // Location
+  LatLng _clientPosition = const LatLng(-1.9706, 30.1044);
+  LatLng _pickupPosition = const LatLng(0, 0);
+  LatLng _dropoffPosition = const LatLng(0, 0);
+  LatLng? _driverPosition;
+  double _driverBearing = 0;
+  double _driverSpeed = 0;
+
+  // Trip details
+  String _driverName = '';
+  String _driverPhone = '';
+  String _pickupAddress = '';
+  String _dropoffAddress = '';
+
+    // Fare details
+  String _totalFarePrice = '';
+  String _totalFareDistance = '';
+  String _farePerKm = '';
+
+  // Metrics
+  String _distance = '---';
+  String _duration = '---';
+  String _eta = '---';
+  double _progress = 0;
+
+  // Map
+  final Set<Marker> _markers = {};
+  final Set<Polyline> _polylines = {};
+  final Set<Circle> _circles = {};
+  BitmapDescriptor? _driverIcon;
+  BitmapDescriptor? _clientIcon;
+  BitmapDescriptor? _destIcon;
+
+  // ─── Lifecycle ──────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    marker.addAll(_list);
-    updateSentRequestStatusBloc =
-        BlocProvider.of<UpdateSentRequestStatusBloc>(context);
-    _getCurrentLocation();
-    setClientDriverMarkerIcons();
-    originLoc = widget.originLocation.toString();
-    destLoc = widget.destinationLocation.toString();
-    clientNames = widget.clientNames.toString();
-    clientPhone = widget.clientPhone.toString();
-    requestId = widget.requestId.toString();
-
-    // Main animation setup
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
-
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.0, 0.6, curve: Curves.easeOut),
-      ),
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.8),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.2, 1.0, curve: Curves.easeOutCubic),
-      ),
-    );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: const Interval(0.2, 0.8, curve: Curves.easeOutBack),
-      ),
-    );
-
-    // Pulse animation for active elements
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    // Shimmer effect for loading
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat();
-
-    _animationController.forward();
+    _setupAnimations();
+    _initialize();
   }
 
   @override
   void dispose() {
-    _animationController.dispose();
-    _pulseController.dispose();
-    _shimmerController.dispose();
+    _pulseCtrl.dispose();
+    _slideCtrl.dispose();
+    _bounceCtrl.dispose();
+    _tripSub?.cancel();
+    _locationSub?.cancel();
+    _metricsSub?.cancel();
+    _mapController?.dispose();
+    _db.ref('active_trips/${widget.requestId}').update({'clientConnected': false});
     super.dispose();
   }
 
-  void setClientDriverMarkerIcons() async {
-    clientIcon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(devicePixelRatio: 2.0),
-        "assets/images/location-pin.png");
-    driverIcon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(devicePixelRatio: 2.0),
-        "assets/images/bike-pin.png");
-    destinationIcon = await BitmapDescriptor.fromAssetImage(
-        const ImageConfiguration(devicePixelRatio: 2.0),
-        "assets/images/destination_icon.png");
+  // ─── Setup ──────────────────────────────────────────────────────────────
+  void _setupAnimations() {
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+
+    _slideCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
+
+    _bounceCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+
+    _pulseAnim = Tween<double>(begin: 0.95, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
+
+    _slideAnim = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _slideCtrl, curve: Curves.easeOutCubic));
+
+    _bounceAnim = Tween<double>(begin: 0, end: 8).animate(
+      CurvedAnimation(parent: _bounceCtrl, curve: Curves.easeInOut),
+    );
   }
 
-  String currentAddress = "";
+  Future<void> _initialize() async {
+    await _createCustomMarkers();
+    await _getCurrentLocation();
+    await _connectToFirebase();
+    _slideCtrl.forward();
+    if (mounted) setState(() => _isLoading = false);
+  }
 
+  // ─── Custom Markers ─────────────────────────────────────────────────────
+  Future<void> _createCustomMarkers() async {
+    _driverIcon = await _buildMarkerIcon(
+      bgColor: _kAccent,
+      iconData: Icons.directions_car_rounded,
+      size: 110,
+    );
+    _clientIcon = await _buildMarkerIcon(
+      bgColor: _kGreen,
+      iconData: Icons.person_pin_circle_rounded,
+      size: 110,
+    );
+    _destIcon = await _buildMarkerIcon(
+      bgColor: _kOrange,
+      iconData: Icons.flag_rounded,
+      size: 110,
+    );
+  }
+
+  Future<BitmapDescriptor> _buildMarkerIcon({
+    required Color bgColor,
+    required IconData iconData,
+    double size = 100,
+  }) async {
+    final recorder = PictureRecorder();
+    final canvas = Canvas(recorder);
+    final r = size / 2;
+
+    // Outer glow
+    final glowPaint = Paint()
+      ..color = bgColor.withOpacity(0.25)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
+    canvas.drawCircle(Offset(r, r), r * 0.85, glowPaint);
+
+    // Main circle
+    final bgPaint = Paint()..color = bgColor;
+    canvas.drawCircle(Offset(r, r), r * 0.7, bgPaint);
+
+    // White border
+    final borderPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4;
+    canvas.drawCircle(Offset(r, r), r * 0.7, borderPaint);
+
+    // Icon
+    final tp = TextPainter(textDirection: TextDirection.ltr)
+      ..text = TextSpan(
+        text: String.fromCharCode(iconData.codePoint),
+        style: TextStyle(
+          fontSize: size * 0.38,
+          fontFamily: iconData.fontFamily,
+          color: Colors.white,
+      ),
+      )
+      ..layout();
+    tp.paint(canvas, Offset((size - tp.width) / 2, (size - tp.height) / 2));
+
+    final img = await recorder.endRecording().toImage(size.toInt(), size.toInt());
+    final bytes = await img.toByteData(format: ImageByteFormat.png);
+    return BitmapDescriptor.fromBytes(bytes!.buffer.asUint8List());
+  }
+
+  // ─── Location ───────────────────────────────────────────────────────────
   Future<void> _getCurrentLocation() async {
-    bool serviceEnabled;
-    LocationPermission permission;
+    try {
+      final perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied ||
+          perm == LocationPermission.deniedForever) return;
 
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      _showErrorSnackBar("Location services are disabled.");
-      return;
-    }
+      final pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      ).timeout(const Duration(seconds: 10));
 
-    permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        _showErrorSnackBar("Location permissions are denied.");
-        return;
+      if (mounted) {
+        setState(() => _clientPosition = LatLng(pos.latitude, pos.longitude));
       }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      _showErrorSnackBar("Location permissions are permanently denied.");
-      return;
-    }
-
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-    locatePosition(position);
+    } catch (_) {}
   }
 
-  void _showErrorSnackBar(String message) {
+  // ─── Firebase ───────────────────────────────────────────────────────────
+  Future<void> _connectToFirebase() async {
+    final tripId = widget.requestId;
+    final tripRef = _db.ref('active_trips/$tripId');
+
+    // Mark client connected
+    await tripRef.update({
+      'clientConnected': true,
+      'lastClientConnection': DateTime.now().toIso8601String(),
+    });
+
+    // Set disconnect handler
+    await tripRef.onDisconnect().update({'clientConnected': false});
+
+    // Load initial data
+    final snap = await tripRef.get();
+    if (snap.exists) {
+      _parseAndApplyTripData(snap.value as Map);
+    }
+
+    // Listen to full trip
+    _tripSub = tripRef.onValue.listen((event) {
+      if (!event.snapshot.exists || !mounted) return;
+      _parseAndApplyTripData(event.snapshot.value as Map);
+    });
+
+    // Listen to driver location separately for lower latency
+    _locationSub = tripRef.child('driver_location').onValue.listen((event) {
+      if (!event.snapshot.exists || !mounted) return;
+      final d = Map<String, dynamic>.from(event.snapshot.value as Map);
+      _handleDriverLocationUpdate(d);
+    });
+  }
+
+  void _parseAndApplyTripData(Map data) {
+    if (!mounted) return;
+
+    final driver = data['driver'] as Map? ?? {};
+    final pickup = data['pickup'] as Map? ?? {};
+    final dropoff = data['dropoff'] as Map? ?? {};
+    final metrics = data['metrics'] as Map? ?? {};
+    final driverLoc = data['driver_location'] as Map? ?? {};
+    final fare = data['fare'] as Map? ?? {};
+
+
+    final newStatus = data['status'] as String? ?? 'started';
+    final prevStatus = _tripStatus;
+
+    setState(() {
+      _tripStatus = newStatus;
+      _driverConnected = data['driverConnected'] as bool? ?? false;
+      _driverName = driver['name'] as String? ?? widget.driverName ?? 'Driver';
+      _driverPhone = driver['phone']?.toString() ?? widget.driverPhone ?? '';
+
+
+      _totalFarePrice = fare['totalFare']?.toString() ?? '';
+      _totalFareDistance = fare['totalDistance']?.toString() ?? '';
+      _farePerKm = fare['farePerKm']?.toString() ?? '';
+
+
+
+      _pickupAddress = pickup['address'] as String? ?? widget.originLocation ?? '';
+      _dropoffAddress = dropoff['address'] as String? ?? widget.destinationLocation ?? '';
+
+      if ((pickup['latitude'] as num?) != null) {
+        _pickupPosition = LatLng(
+          (pickup['latitude'] as num).toDouble(),
+          (pickup['longitude'] as num).toDouble(),
+        );
+      }
+      if ((dropoff['latitude'] as num?) != null) {
+        _dropoffPosition = LatLng(
+          (dropoff['latitude'] as num).toDouble(),
+          (dropoff['longitude'] as num).toDouble(),
+        );
+      }
+
+      // Metrics
+      final rem = (metrics['remainingDistance'] as num?)?.toDouble() ?? 0;
+      final init = (metrics['initialDistance'] as num?)?.toDouble() ?? 1;
+      final dur = (metrics['estimatedDuration'] as num?)?.toInt() ?? 0;
+      _distance = _fmtDist(rem);
+      _duration = _fmtDur(dur);
+      _eta = metrics['estimatedArrival'] as String? ?? '---';
+      _progress = ((init - rem) / init).clamp(0.0, 1.0);
+
+      // Driver location
+      if (driverLoc.isNotEmpty) {
+        _driverPosition = LatLng(
+          (driverLoc['latitude'] as num).toDouble(),
+          (driverLoc['longitude'] as num).toDouble(),
+        );
+        _driverBearing = (driverLoc['bearing'] as num?)?.toDouble() ?? 0;
+        _driverSpeed = (driverLoc['speed'] as num?)?.toDouble() ?? 0;
+      }
+    });
+
+    // Status changed — show notification
+    if (prevStatus != newStatus) _onStatusChanged(newStatus);
+
+    _refreshMapMarkers();
+
+    // Draw route once
+    if (!_routeDrawn && _pickupPosition.latitude != 0 && _dropoffPosition.latitude != 0) {
+      _routeDrawn = true;
+      _drawRoute();
+    }
+  }
+
+  void _handleDriverLocationUpdate(Map<String, dynamic> d) {
+    if (!mounted) return;
+    final newPos = LatLng(
+      (d['latitude'] as num).toDouble(),
+      (d['longitude'] as num).toDouble(),
+    );
+
+    // Ignore micro-updates
+    if (_driverPosition != null) {
+      final dist = Geolocator.distanceBetween(
+        _driverPosition!.latitude,
+        _driverPosition!.longitude,
+        newPos.latitude,
+        newPos.longitude,
+      );
+      if (dist < 3) return;
+    }
+
+    setState(() {
+      _driverPosition = newPos;
+      _driverBearing = (d['bearing'] as num?)?.toDouble() ?? _driverBearing;
+      _driverSpeed = (d['speed'] as num?)?.toDouble() ?? _driverSpeed;
+    });
+
+    _refreshMapMarkers();
+  }
+
+  void _onStatusChanged(String status) {
+    HapticFeedback.mediumImpact();
+    if (status == 'completed') {
+      _showCompletionSheet();
+    } else if (status == 'cancelled' || status == 'cancelled_by_client') {
+      _showCancellationDialog();
+    } else if (status == 'arrived_at_pickup') {
+      _showDriverArrivedSnack();
+    }
+  }
+
+  // ─── Map ────────────────────────────────────────────────────────────────
+  void _refreshMapMarkers() {
+    if (!mounted) return;
+    final updatedMarkers = <Marker>{};
+    final updatedCircles = <Circle>{};
+
+    // Pickup marker
+    if (_pickupPosition.latitude != 0 && _clientIcon != null) {
+      updatedMarkers.add(Marker(
+        markerId: const MarkerId('pickup'),
+        position: _pickupPosition,
+        icon: _clientIcon!,
+        anchor: const Offset(0.5, 0.5),
+        infoWindow: InfoWindow(title: 'Your Pickup', snippet: _pickupAddress),
+      ));
+      updatedCircles.add(Circle(
+        circleId: const CircleId('pickupCircle'),
+        center: _pickupPosition,
+        radius: 60,
+        fillColor: _kGreen.withOpacity(0.12),
+        strokeColor: _kGreen.withOpacity(0.4),
+        strokeWidth: 2,
+      ));
+    }
+
+    // Dropoff marker
+    if (_dropoffPosition.latitude != 0 && _destIcon != null) {
+      updatedMarkers.add(Marker(
+        markerId: const MarkerId('dropoff'),
+        position: _dropoffPosition,
+        icon: _destIcon!,
+        anchor: const Offset(0.5, 0.5),
+        infoWindow: InfoWindow(title: 'Destination', snippet: _dropoffAddress),
+      ));
+      updatedCircles.add(Circle(
+        circleId: const CircleId('dropoffCircle'),
+        center: _dropoffPosition,
+        radius: 60,
+        fillColor: _kOrange.withOpacity(0.12),
+        strokeColor: _kOrange.withOpacity(0.4),
+        strokeWidth: 2,
+      ));
+    }
+
+    // Driver marker
+    if (_driverPosition != null && _driverIcon != null) {
+      updatedMarkers.add(Marker(
+        markerId: const MarkerId('driver'),
+        position: _driverPosition!,
+        icon: _driverIcon!,
+        rotation: _driverBearing,
+        anchor: const Offset(0.5, 0.5),
+        infoWindow: InfoWindow(
+          title: _driverName,
+          snippet: '${(_driverSpeed * 3.6).toStringAsFixed(0)} km/h',
+      ),
+      ));
+    }
+
+    setState(() {
+      _markers
+        ..clear()
+        ..addAll(updatedMarkers);
+      _circles
+        ..clear()
+        ..addAll(updatedCircles);
+    });
+  }
+
+  Future<void> _drawRoute() async {
+    try {
+      final apiKey = dotenv.get('apiKey');
+      final url = Uri.parse(
+        'https://maps.googleapis.com/maps/api/directions/json'
+        '?origin=${_pickupPosition.latitude},${_pickupPosition.longitude}'
+        '&destination=${_dropoffPosition.latitude},${_dropoffPosition.longitude}'
+        '&mode=driving&key=$apiKey',
+      );
+      final res = await http.get(url).timeout(const Duration(seconds: 15));
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        if ((data['routes'] as List).isNotEmpty) {
+          final pts = _decodePolyline(
+            data['routes'][0]['overview_polyline']['points'] as String,
+          );
+          if (!mounted) return;
+          setState(() {
+            _polylines
+              ..clear()
+              ..add(Polyline(
+                polylineId: const PolylineId('route'),
+                points: pts,
+                color: _kAccent,
+                width: 5,
+                startCap: Cap.roundCap,
+                endCap: Cap.roundCap,
+                geodesic: true,
+              ));
+          });
+          _fitBounds();
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('Route error: $e');
+    }
+  }
+
+  void _fitBounds() {
+    if (_mapController == null || _pickupPosition.latitude == 0) return;
+    final lats = [_pickupPosition.latitude, _dropoffPosition.latitude];
+    final lngs = [_pickupPosition.longitude, _dropoffPosition.longitude];
+    if (_driverPosition != null) {
+      lats.add(_driverPosition!.latitude);
+      lngs.add(_driverPosition!.longitude);
+    }
+    _mapController!.animateCamera(
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: LatLng(lats.reduce(math.min), lngs.reduce(math.min)),
+          northeast: LatLng(lats.reduce(math.max), lngs.reduce(math.max)),
+      ),
+        80,
+      ),
+    );
+  }
+
+  List<LatLng> _decodePolyline(String encoded) {
+    final pts = <LatLng>[];
+    int i = 0;
+    int lat = 0, lng = 0;
+    while (i < encoded.length) {
+      int b, shift = 0, result = 0;
+      do {
+        b = encoded.codeUnitAt(i++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lat += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
+      shift = 0;
+      result = 0;
+      do {
+        b = encoded.codeUnitAt(i++) - 63;
+        result |= (b & 0x1f) << shift;
+        shift += 5;
+      } while (b >= 0x20);
+      lng += (result & 1) != 0 ? ~(result >> 1) : result >> 1;
+      pts.add(LatLng(lat / 1e5, lng / 1e5));
+    }
+    return pts;
+  }
+
+  // ─── Utilities ──────────────────────────────────────────────────────────
+  String _fmtDist(double m) {
+    if (m <= 0) return '---';
+    return m < 1000 ? '${m.toStringAsFixed(0)} m' : '${(m / 1000).toStringAsFixed(1)} km';
+  }
+
+  String _fmtDur(int s) {
+    if (s <= 0) return '---';
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60;
+    if (h > 0) return '${h}h ${m}min';
+    if (m > 0) return '${m}min';
+    return '<1min';
+  }
+
+  void _callDriver() {
+    if (_driverPhone.isNotEmpty) {
+      FlutterPhoneDirectCaller.callNumber('+$_driverPhone');
+    }
+  }
+
+  // ─── Dialogs / Sheets ───────────────────────────────────────────────────
+  void _showDriverArrivedSnack() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.error_outline,
-                  color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                message,
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w500,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: const Color(0xFFE53E3E),
+        backgroundColor: _kGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        margin: const EdgeInsets.all(20),
-        elevation: 8,
+        margin: const EdgeInsets.all(16),
+        content: Row(
+          children: [
+            const Text('📍', style: TextStyle(fontSize: 20)),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Driver has arrived!',
+                  style: GoogleFonts.sora(
+                      fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+                Text(
+                  'Head to your pickup point',
+                  style: GoogleFonts.sora(
+                      fontSize: 12, color: Colors.white.withOpacity(0.85)),
+            ),
+            ],
+        ),
+        ],
+      ),
         duration: const Duration(seconds: 4),
       ),
     );
   }
 
-  void locatePosition(Position currentPosition) async {
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-    currentPosition = position;
-
-    try {
-      List<Placemark> placemarks =
-          await placemarkFromCoordinates(position.latitude, position.longitude);
-      CameraPosition cameraPosition = CameraPosition(
-          target: LatLng(currentPosition.latitude, currentPosition.longitude),
-          zoom: 15.6);
-      _controllers!
-          .animateCamera(CameraUpdate.newCameraPosition(cameraPosition));
-
-      initialPosition =
-          LatLng(currentPosition.latitude, currentPosition.longitude);
-      Placemark place = placemarks[0];
-      if (mounted) {
-        setState(() {
-          currentAddress =
-              "${place.street}, ${place.subLocality}, ${place.locality}, ${place.country}";
-          sLat = currentPosition.latitude;
-          sLng = currentPosition.longitude;
-        });
-        getPickupWithAddress(currentAddress);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          currentAddress = "Error getting address: $e";
-        });
-      }
-    }
-  }
-
-  bool loading = false;
-  LatLng initialPosition = const LatLng(0, 0);
-  LatLng destinationPosition = const LatLng(0, 0);
-  String locationSelected = "";
-  double dLat = 0.0, dLng = 0.0;
-  double sLat = 0.0, sLng = 0.0;
-  String? countryCode = "rw";
-
-  int _polylineCount = 1;
-  int _polylineRouteCount = 1;
-  final Map<PolylineId, Polyline> _polylines = <PolylineId, Polyline>{};
-
-  final GoogleMapPolyline _googleMapPolyline =
-      GoogleMapPolyline(apiKey: dotenv.get('apiKey'));
-
-  List<List<PatternItem>> patterns = <List<PatternItem>>[
-    <PatternItem>[],
-    <PatternItem>[PatternItem.dash(30.0), PatternItem.gap(20.0)],
-    <PatternItem>[PatternItem.dot, PatternItem.gap(10.0)],
-    <PatternItem>[
-      PatternItem.dash(30.0),
-      PatternItem.gap(20.0),
-      PatternItem.dot,
-      PatternItem.gap(20.0)
-    ],
-  ];
-
-  bool _loading = false;
-
-  double calculateBearing(LatLng start, LatLng end) {
-    final double startLat = start.latitude * (math.pi / 180);
-    final double startLng = start.longitude * (math.pi / 180);
-    final double endLat = end.latitude * (math.pi / 180);
-    final double endLng = end.longitude * (math.pi / 180);
-
-    final double dLng = endLng - startLng;
-    final double x = math.sin(dLng) * math.cos(endLat);
-    final double y = math.cos(startLat) * math.sin(endLat) -
-        math.sin(startLat) * math.cos(endLat) * math.cos(dLng);
-
-    final double bearing = math.atan2(x, y) * (180 / math.pi);
-    return (bearing + 360) % 360;
-  }
-
-  Future<void> getCoordinatesFromAddress(String address) async {
-    try {
-      List<Location> locations = await locationFromAddress(address);
-
-      if (locations.isNotEmpty) {
-        dLat = locations[0].latitude;
-        dLng = locations[0].longitude;
-
-        if (kDebugMode) {
-          print('Latitude: $dLat, Longitude: $dLng');
-        }
-
-        _calculateRouteDuration(sLat, sLng, dLat, dLng);
-
-        double angle = calculateBearing(LatLng(sLat, sLng), LatLng(dLat, dLng));
-
-        setState(() {
-          marker.add(Marker(
-            markerId: const MarkerId("destinMarker"),
-            position: LatLng(dLat, dLng),
-            draggable: false,
-            rotation: angle,
-            zIndex: 2,
-            flat: true,
-            icon: destinationIcon!,
-            anchor: const Offset(0.5, 0.5),
-          ));
-        });
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Error: $e');
-      }
-    }
-  }
-
-  String _travelDuration = "";
-  String _travelDistance = "";
-
-  _calculateRouteDuration(double sLatitude, double sLongitude, double dLatitude,
-      double dLongitude) async {
-    final apiKey = dotenv.get('apiKey');
-    final url = Uri.parse(
-        'https://maps.googleapis.com/maps/api/directions/json?origin=$sLatitude,$sLongitude&destination=$dLatitude,$dLongitude&mode=driving&key=$apiKey');
-    final response = await http.get(url);
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-
-      if (data['routes'].isNotEmpty) {
-        final duration = data['routes'][0]['legs'][0]['duration']['text'];
-        final distance = data['routes'][0]['legs'][0]['distance']['text'];
-        setState(() {
-          _travelDuration = duration;
-          _travelDistance = distance;
-        });
-      }
-    } else {
-      print('Error fetching directions: ${response.statusCode}');
-    }
-  }
-
-  bool isStarted = false;
-
-  getPickupWithAddress(String _currentAddress) async {
-    _setLoadingMenu(true);
-    Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high);
-
-    CameraPosition cameraPosition =
-        CameraPosition(target: LatLng(sLat, sLng), zoom: 15.6);
-    _controllers!.animateCamera(CameraUpdate.newCameraPosition(cameraPosition));
-
-    getCoordinatesFromAddress(destLoc.toString());
-
-    if (mounted) {
-      setState(() {
-        marker.add(Marker(
-          markerId: const MarkerId("originMarker"),
-          position: LatLng(position.latitude, position.longitude),
-          rotation: position.headingAccuracy,
-          draggable: false,
-          zIndex: 2,
-          flat: true,
-          icon: driverIcon!,
-          anchor: const Offset(0.5, 0.5),
-        ));
-
-        isStarted = true;
-      });
-    }
-
-    List<LatLng>? coordinates =
-        await _googleMapPolyline.getPolylineCoordinatesWithAddress(
-            origin: _currentAddress.toString(),
-            destination: originLoc.toString(),
-            mode: RouteMode.driving);
-
-    if (mounted) {
-      setState(() {
-        _polylines.clear();
-      });
-    }
-
-    _addPickupPolyline(coordinates);
-    _setLoadingMenu(false);
-  }
-
-  _addPickupPolyline(List<LatLng>? coordinates) {
-    PolylineId id = PolylineId("pickup_poly$_polylineCount");
-    Polyline polyline = Polyline(
-        polylineId: id,
-        patterns: patterns[0],
-        color: primaryColor,
-        points: coordinates!,
-        width: 5,
-        onTap: () {});
-
-    if (mounted) {
-      setState(() {
-        _polylines[id] = polyline;
-        _polylineCount++;
-      });
-    }
-  }
-
-  _setLoadingMenu(bool status) {
-    if (mounted) {
-      setState(() {
-        _loading = status;
-      });
-    }
-  }
-
-  String requestId = '';
-  bool dataLoaded = false;
-  String? originLoc, destLoc, clientPhone, clientNames;
-
-  void _updateRequestStatus(String newStatus, int requestId) {
-    updateSentRequestStatusBloc.add(
-        HandleUpdateStatus(requestId: requestId.toString(), status: newStatus));
-  }
-
-  void _recenterMap() async {
-    if (_controllers != null) {
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-      CameraPosition cameraPosition = CameraPosition(
-        target: LatLng(position.latitude, position.longitude),
-        zoom: 15.6,
-        bearing: 0,
-        tilt: 0,
-      );
-      _controllers!.animateCamera(
-        CameraUpdate.newCameraPosition(cameraPosition),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      extendBodyBehindAppBar: true,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(70),
-        child: _buildGlassAppBar(),
-      ),
-      body: Stack(
-        children: [
-          // Google Map
-          GoogleMap(
-            onMapCreated: (GoogleMapController controller) {
-              controllerGoogleMapCompleter.complete(controller);
-              _controllers = controller;
-              _getCurrentLocation();
+  void _showCancellationDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => _StyledDialog(
+        icon: '❌',
+        iconColor: Colors.red,
+        title: 'Trip Cancelled',
+        message: 'This trip has been cancelled.',
+        actions: [
+          _DialogAction(
+            label: 'Go Home',
+            isPrimary: true,
+            onTap: () {
+              Navigator.pop(context);
+              context.go('/');
             },
-            markers: Set<Marker>.of(marker),
-            polylines: Set<Polyline>.of(_polylines.values),
-            initialCameraPosition: CameraPosition(
-              target: initialPosition,
-              zoom: 15,
-            ),
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            zoomControlsEnabled: false,
-            compassEnabled: false,
-            mapToolbarEnabled: false,
-            // styles: _mapStyle,
-          ),
-
-          // Elegant gradient overlays
-          _buildTopGradientOverlay(),
-          _buildBottomGradientOverlay(),
-
-          // Floating recenter button
-          Positioned(
-            top: 100,
-            right: 16,
-            child: _buildFloatingActionButton(
-              icon: Icons.my_location_rounded,
-              onPressed: _recenterMap,
-              gradient: LinearGradient(
-                colors: [primaryColor, primaryColor.withOpacity(0.8)],
-              ),
-            ),
-          ),
-
-          // Bottom Info Card
-          if (isStarted) _buildBottomInfoCard(),
-
-          // Loading Overlay
-          if (_loading) _buildLoadingOverlay(),
+        ),
         ],
       ),
     );
   }
 
-  // Glassmorphic App Bar
-  Widget _buildGlassAppBar() {
-    return ClipRRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                primaryColor.withOpacity(0.85),
-                primaryColor.withOpacity(0.75),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            border: Border(
-              bottom: BorderSide(
-                color: Colors.white.withOpacity(0.2),
-                width: 1,
-              ),
-            ),
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: Row(
-                children: [
-                  _buildGlassIconButton(
-                    icon: Icons.arrow_back_ios_new_rounded,
-                    onPressed: () => context.safeGoNamed(home),
-                  ),
-                  const Spacer(),
-                  Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'Live Tracking',
-                        style: GoogleFonts.poppins(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 20,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        height: 3,
-                        width: 40,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.8),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  const SizedBox(width: 48), // Balance the back button
-                ],
-              ),
-            ),
-          ),
-        ),
+  void _showCompletionSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _RatingSheet(
+        driverName: _driverName,
+        totalPrice: _totalFarePrice,
+        onRate: (stars, feedback) async {
+          await _db.ref('active_trips/${widget.requestId}/rating').set({
+            'stars': stars,
+            'feedback': feedback,
+            'ratedAt': DateTime.now().toIso8601String(),
+          });
+          if (mounted) context.go('/');
+        },
+        onSkip: () => context.go('/'),
+        onConfirmPayment: () => context.go('/'),
       ),
     );
   }
 
-  Widget _buildGlassIconButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-  }) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.25),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Colors.white.withOpacity(0.3),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-      ),
-    );
-  }
+  // ─── Build ──────────────────────────────────────────────────────────────
+  @override
+  Widget build(BuildContext context) {
+    final config = _statusConfigs[_tripStatus] ??
+        const _StatusConfig('🚗', 'Tracking', 'Your trip is active', _kAccent);
 
-  Widget _buildFloatingActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required Gradient gradient,
-  }) {
-    return ScaleTransition(
-      scale: _pulseAnimation,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onPressed,
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            padding: const EdgeInsets.all(16),
+    return Scaffold(
+      backgroundColor: _kPrimary,
+      body: Stack(
+        children: [
+          // ── Google Map ──────────────────────────────────────────────────
+          Positioned.fill(
+            bottom: 280,
+            child: GoogleMap(
+              onMapCreated: (ctrl) {
+                _mapController = ctrl;
+                setState(() => _mapReady = true);
+                Future.delayed(const Duration(milliseconds: 800), _fitBounds);
+              },
+              markers: _markers,
+              polylines: _polylines,
+              circles: _circles,
+              initialCameraPosition: CameraPosition(
+                target: _clientPosition,
+                zoom: 15,
+          ),
+              myLocationEnabled: false,
+              zoomControlsEnabled: false,
+              compassEnabled: false,
+              mapToolbarEnabled: false,
+              buildingsEnabled: true,
+        ),
+        ),
+
+          // ── Gradient overlay at bottom of map ───────────────────────────
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 260,
+            height: 80,
+            child: DecoratedBox(
             decoration: BoxDecoration(
-              gradient: gradient,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: primaryColor.withOpacity(0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    _kSurface.withOpacity(0.9),
+                ],
             ),
-            child: Icon(icon, color: Colors.white, size: 24),
           ),
         ),
+        ),
+
+          // ── App Bar ──────────────────────────────────────────────────────
+          _buildAppBar(config),
+
+          // ── Live badge ──────────────────────────────────────────────────
+          Positioned(
+            top: 110,
+            right: 16,
+            child: _buildLiveBadge(),
+        ),
+
+          // ── Recenter FAB ────────────────────────────────────────────────
+          Positioned(
+            bottom: 300,
+            right: 16,
+            child: _buildFab(Icons.my_location_rounded, _fitBounds),
+        ),
+
+          // ── Bottom sheet ─────────────────────────────────────────────────
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: SlideTransition(
+              position: _slideAnim,
+              child: _buildBottomPanel(config),
+            ),
+          ),
+
+          // ── Loading overlay ──────────────────────────────────────────────
+          if (_isLoading) _buildLoadingOverlay(),
+        ],
       ),
     );
   }
 
-  Widget _buildTopGradientOverlay() {
+  Widget _buildAppBar(_StatusConfig config) {
     return Positioned(
       top: 0,
       left: 0,
       right: 0,
-      child: IgnorePointer(
-        child: Container(
-          height: 250,
+      child: ClipRRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+          child: Container(
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                Colors.black.withOpacity(0.35),
-                Colors.black.withOpacity(0.15),
-                Colors.transparent,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  _kPrimary.withOpacity(0.95),
+                  _kAccent.withOpacity(0.85),
               ],
-            ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBottomGradientOverlay() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: IgnorePointer(
-        child: Container(
-          height: 200,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.bottomCenter,
-              end: Alignment.topCenter,
-              colors: [
-                Colors.black.withOpacity(0.2),
-                Colors.transparent,
-              ],
+            boxShadow: [
+              BoxShadow(
+                  color: _kAccent.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
             ),
-          ),
+            ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildBottomInfoCard() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: SlideTransition(
-          position: _slideAnimation,
-          child: ScaleTransition(
-            scale: _scaleAnimation,
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(32),
-                boxShadow: [
-                  BoxShadow(
-                    color: primaryColor.withOpacity(0.15),
-                    blurRadius: 40,
-                    offset: const Offset(0, 20),
-                    spreadRadius: -5,
-                  ),
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Drag handle with gradient
-                  Container(
-                    margin: const EdgeInsets.only(top: 16, bottom: 8),
-                    width: 50,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.grey[300]!,
-                          Colors.grey[400]!,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(3),
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Row(
+                  children: [
+                    // Back button
+                    GestureDetector(
+                      onTap: () => context.go('/'),
+                      child: Container(
+                        width: 40,
+                        height: 40,
+                      decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
                     ),
+                        child: const Icon(Icons.arrow_back_ios_new_rounded,
+                            color: Colors.white, size: 18),
                   ),
+                ),
+                    const SizedBox(width: 14),
 
-                  // Content
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-                    child: Column(
-                      children: [
-                        // Trip Stats Cards
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildElegantStatCard(
-                                icon: Icons.access_time_rounded,
-                                label: 'Duration',
-                                value: _travelDuration.isEmpty
-                                    ? "..."
-                                    : _travelDuration,
-                                gradient: LinearGradient(
-                                  colors: [
-                                    primaryColor.withOpacity(0.12),
-                                    primaryColor.withOpacity(0.05),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                accentColor: primaryColor,
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: _buildElegantStatCard(
-                                icon: Icons.route_rounded,
-                                label: 'Distance',
-                                value: _travelDistance.isEmpty
-                                    ? "..."
-                                    : _travelDistance,
-                                gradient: LinearGradient(
-                                  colors: [
-                                    orangeColor.withOpacity(0.12),
-                                    orangeColor.withOpacity(0.05),
-                                  ],
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                ),
-                                accentColor: orangeColor,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        // Elegant Divider
-                        Container(
-                          height: 1,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Colors.transparent,
-                                Colors.grey[300]!,
-                                Colors.grey[300]!,
-                                Colors.transparent,
-                              ],
+                    // Status info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                config.emoji,
+                                style: const TextStyle(fontSize: 18),
+                          ),
+                              const SizedBox(width: 6),
+                              Text(
+                                config.title,
+                                style: GoogleFonts.sora(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.white,
                             ),
                           ),
+                          ],
+                      ),
+                          const SizedBox(height: 2),
+                          Text(
+                            config.subtitle,
+                            style: GoogleFonts.sora(
+                              fontSize: 11,
+                              color: Colors.white.withOpacity(0.75),
                         ),
-
-                        const SizedBox(height: 24),
-
-                        // Client Info Section
-                        _buildClientInfoSection(),
+                      ),
                       ],
-                    ),
                   ),
+                ),
+
+                    // Driver connection dot
+                    Container(
+                      width: 10,
+                      height: 10,
+                    decoration: BoxDecoration(
+                        color: _driverConnected ? _kGreen : Colors.orange,
+                        shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                            color: (_driverConnected ? _kGreen : Colors.orange)
+                                .withOpacity(0.5),
+                            blurRadius: 6,
+                            spreadRadius: 2,
+                      ),
+                      ],
+                  ),
+                ),
                 ],
-              ),
             ),
           ),
         ),
+        ),
+      ),
       ),
     );
   }
 
-  Widget _buildElegantStatCard({
-    required IconData icon,
-    required String label,
-    required String value,
-    required Gradient gradient,
-    required Color accentColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: gradient,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: accentColor.withOpacity(0.2),
-          width: 1.5,
+  Widget _buildLiveBadge() {
+    return AnimatedBuilder(
+      animation: _pulseAnim,
+      builder: (_, __) => Transform.scale(
+        scale: _pulseAnim.value,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+                color: _kGreen.withOpacity(0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+          ),
+          ],
         ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+              decoration: BoxDecoration(
+                  color: _kGreen,
+                  shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                        color: _kGreen.withOpacity(0.6),
+                        blurRadius: 4,
+                        spreadRadius: 2)
+                ],
+            ),
+          ),
+              const SizedBox(width: 5),
+              Text(
+                'LIVE',
+                style: GoogleFonts.sora(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: _kPrimary,
+                  letterSpacing: 1.2,
+            ),
+          ),
+          ],
+        ),
+      ),
+      ),
+    );
+  }
+
+  Widget _buildFab(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+      decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: accentColor.withOpacity(0.08),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
+              color: Colors.black.withOpacity(0.12),
+                blurRadius: 12,
+                offset: const Offset(0, 4))
+        ],
+      ),
+        child: Icon(icon, color: _kPrimary, size: 22),
+      ),
+    );
+  }
+
+  Widget _buildBottomPanel(_StatusConfig config) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 280),
+      decoration: BoxDecoration(
+        color: _kCard,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.12),
+            blurRadius: 24,
+            offset: const Offset(0, -6),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
+          // Drag handle
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Container(
+              width: 36,
+              height: 4,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  accentColor.withOpacity(0.2),
-                  accentColor.withOpacity(0.1),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [
-                BoxShadow(
-                  color: accentColor.withOpacity(0.15),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Icon(icon, color: accentColor, size: 22),
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
           ),
-          const SizedBox(height: 14),
-          Text(
-            label,
-            style: GoogleFonts.poppins(
-              fontSize: 11,
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: GoogleFonts.poppins(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: accentColor,
-              height: 1.0,
-              letterSpacing: -0.5,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
+        ),
+        ),
+
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+            child: Column(
+              children: [
+                // ── Status steps ─────────────────────────────────────────
+                _buildStatusStepper(),
+                const SizedBox(height: 16),
+
+                // ── Metrics row ──────────────────────────────────────────
+                _buildMetricsRow(),
+                const SizedBox(height: 16),
+
+                // ── Progress bar ─────────────────────────────────────────
+                _buildProgressBar(),
+                const SizedBox(height: 20),
+
+                // ── Driver card ──────────────────────────────────────────
+                _buildDriverCard(),
+            ],
+        ),
+        ),
         ],
       ),
     );
   }
 
-  Widget _buildClientInfoSection() {
+  Widget _buildStatusStepper() {
+    final stepLabels = ['Accepted', 'On Way', 'Arrived', 'On Board', 'Done'];
+    final stepIcons = [
+      Icons.check_circle_outline_rounded,
+      Icons.directions_car_rounded,
+      Icons.location_on_rounded,
+      Icons.airline_seat_recline_normal_rounded,
+      Icons.flag_rounded,
+    ];
+
+    final statusKeys = [
+      'started', 'driver_arriving', 'arrived_at_pickup', 'client_on_board', 'completed'
+    ];
+    final currentStep = statusKeys.indexOf(_tripStatus);
+
+    return Row(
+      children: List.generate(stepLabels.length, (i) {
+        final done = i <= currentStep;
+        final active = i == currentStep;
+        return Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 400),
+                      width: active ? 36 : 28,
+                      height: active ? 36 : 28,
+                    decoration: BoxDecoration(
+                        color: done ? _kAccent : Colors.grey.shade200,
+                        shape: BoxShape.circle,
+                        boxShadow: active
+                            ? [BoxShadow(color: _kAccent.withOpacity(0.4), blurRadius: 8)]
+                            : null,
+                  ),
+                      child: Icon(
+                        stepIcons[i],
+                        size: active ? 18 : 14,
+                        color: done ? Colors.white : Colors.grey.shade400,
+                  ),
+                ),
+                    const SizedBox(height: 4),
+                    Text(
+                      stepLabels[i],
+                      style: GoogleFonts.sora(
+                        fontSize: 9,
+                        fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                        color: done ? _kPrimary : Colors.grey.shade400,
+                  ),
+                      textAlign: TextAlign.center,
+                ),
+                ],
+            ),
+          ),
+              if (i < stepLabels.length - 1)
+                Expanded(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 600),
+                    height: 2,
+                    color: i < currentStep ? _kAccent : Colors.grey.shade200,
+              ),
+            ),
+          ],
+        ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildMetricsRow() {
+    return Row(
+      children: [
+        _MetricCard(
+          icon: Icons.straighten_rounded,
+          label: 'Distance',
+          value: _distance,
+          color: _kAccent,
+      ),
+        const SizedBox(width: 10),
+        _MetricCard(
+          icon: Icons.timer_outlined,
+          label: 'ETA',
+          value: _duration,
+          color: _kOrange,
+      ),
+        const SizedBox(width: 10),
+        _MetricCard(
+          icon: Icons.schedule_rounded,
+          label: 'Arrives',
+          value: _eta,
+          color: _kGreen,
+      ),
+      ],
+    );
+  }
+
+  Widget _buildProgressBar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Trip Progress',
+              style: GoogleFonts.sora(
+                fontSize: 12,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+          ),
+        ),
+            Text(
+              '${(_progress * 100).toStringAsFixed(0)}%',
+              style: GoogleFonts.sora(
+                fontSize: 12,
+                color: _kAccent,
+                fontWeight: FontWeight.w700,
+          ),
+        ),
+        ],
+      ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: LinearProgressIndicator(
+            value: _progress,
+            backgroundColor: Colors.grey.shade200,
+            valueColor: AlwaysStoppedAnimation<Color>(_kAccent),
+            minHeight: 7,
+        ),
+      ),
+      ],
+    );
+  }
+
+  Widget _buildDriverCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            primaryColor.withOpacity(0.08),
-            primaryColor.withOpacity(0.03),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          colors: [_kPrimary, _kAccent.withOpacity(0.85)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+      ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _kAccent.withOpacity(0.25),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
         ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: primaryColor.withOpacity(0.15),
-          width: 1.5,
-        ),
+        ],
       ),
       child: Row(
         children: [
-          // Avatar with gradient
+          // Avatar
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [primaryColor, primaryColor.withOpacity(0.7)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: primaryColor.withOpacity(0.4),
-                  blurRadius: 16,
-                  offset: const Offset(0, 6),
-                ),
-              ],
-            ),
-            child: const Icon(
-              Icons.person_rounded,
-              color: Colors.white,
-              size: 32,
-            ),
-          ),
-          const SizedBox(width: 18),
+            width: 48,
+            height: 48,
+          decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.3), width: 2),
+        ),
+            child: const Icon(Icons.person_rounded, color: Colors.white, size: 26),
+        ),
+          const SizedBox(width: 12),
 
-          // Client details
+          // Info
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Passenger',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  clientNames ?? 'Unknown',
-                  style: GoogleFonts.poppins(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    color: const Color(0xFF1A202C),
-                    height: 1.2,
-                    letterSpacing: -0.3,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.phone_rounded,
-                      size: 14,
-                      color: Colors.grey[600],
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      clientPhone ?? 'No phone',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: Colors.grey[700],
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // Call button with animation
-          ScaleTransition(
-            scale: _pulseAnimation,
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  if (clientPhone != null) {
-                    FlutterPhoneDirectCaller.callNumber(clientPhone!);
-                  }
-                },
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [greenColor, Color(0xFF34D399)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(18),
-                    boxShadow: [
-                      BoxShadow(
-                        color: greenColor.withOpacity(0.4),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.phone_rounded,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
+                  'YOUR DRIVER',
+                  style: GoogleFonts.sora(
+                    fontSize: 9,
+                    color: Colors.white.withOpacity(0.7),
+                    letterSpacing: 1.5,
               ),
             ),
+                Text(
+                  _driverName.isNotEmpty ? _driverName : 'Driver',
+                  style: GoogleFonts.sora(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+              ),
+            ),
+                Row(
+                  children: [
+                    Icon(Icons.speed_rounded,
+                        size: 12, color: Colors.white.withOpacity(0.7)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${(_driverSpeed * 3.6).toStringAsFixed(0)} km/h',
+                      style: GoogleFonts.sora(
+                        fontSize: 11,
+                        color: Colors.white.withOpacity(0.7),
+                  ),
+                ),
+                ],
+            ),
+            ],
+        ),
+        ),
+
+          // Call button
+          AnimatedBuilder(
+            animation: _pulseAnim,
+            builder: (_, __) => Transform.scale(
+              scale: _pulseAnim.value,
+              child: GestureDetector(
+                onTap: _callDriver,
+                child: Container(
+                  width: 46,
+                  height: 46,
+                decoration: BoxDecoration(
+                    color: _kGreen,
+                    shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                          color: _kGreen.withOpacity(0.5),
+                          blurRadius: 10,
+                          spreadRadius: 2),
+                  ],
+              ),
+                  child: const Icon(Icons.call_rounded, color: Colors.white, size: 22),
+            ),
           ),
+        ),
+        ),
         ],
       ),
     );
@@ -1036,129 +1239,508 @@ class _ClientDirectionsState extends State<ClientDirections>
 
   Widget _buildLoadingOverlay() {
     return Positioned.fill(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Container(
-          color: Colors.black.withOpacity(0.5),
-          child: Center(
-            child: ScaleTransition(
-              scale: _scaleAnimation,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white,
-                      Colors.grey[50]!,
+      child: Container(
+        color: _kPrimary.withOpacity(0.8),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Animated logo
+              AnimatedBuilder(
+                animation: _bounceAnim,
+                builder: (_, __) => Transform.translate(
+                  offset: Offset(0, -_bounceAnim.value),
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                  decoration: BoxDecoration(
+                      color: _kAccent,
+                      shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                            color: _kAccent.withOpacity(0.5),
+                            blurRadius: 20,
+                            spreadRadius: 4),
                     ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(32),
-                  boxShadow: [
-                    BoxShadow(
-                      color: primaryColor.withOpacity(0.2),
-                      blurRadius: 40,
-                      offset: const Offset(0, 20),
-                    ),
-                  ],
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // Outer ring
-                        Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(
-                              colors: [
-                                primaryColor.withOpacity(0.1),
-                                primaryColor.withOpacity(0.05),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // Spinner
-                        const SpinKitRing(
-                          color: primaryColor,
-                          size: 65,
-                          lineWidth: 5,
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 28),
-                    Text(
-                      'Loading Route',
-                      style: GoogleFonts.poppins(
-                        color: const Color(0xFF1A202C),
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Preparing your journey',
-                      style: GoogleFonts.poppins(
-                        color: Colors.grey[600],
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
-                  ],
-                ),
+                    child: const Icon(Icons.directions_car_rounded,
+                        color: Colors.white, size: 36),
               ),
             ),
           ),
+              const SizedBox(height: 24),
+              Text(
+                'Connecting to driver...',
+                style: GoogleFonts.sora(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+            ),
+          ),
+              const SizedBox(height: 8),
+              Text(
+                'Setting up live tracking',
+                style: GoogleFonts.sora(
+                  color: Colors.white.withOpacity(0.6),
+                  fontSize: 12,
+            ),
+          ),
+          ],
         ),
+      ),
       ),
     );
   }
+}
 
-  // Custom map style (optional - for a more elegant map appearance)
-  String get _mapStyle => '''
-  [
-    {
-      "featureType": "poi",
-      "elementType": "labels.text",
-      "stylers": [
-        {
-          "visibility": "off"
-        }
-      ]
-    },
-    {
-      "featureType": "poi.business",
-      "stylers": [
-        {
-          "visibility": "off"
-        }
-      ]
-    },
-    {
-      "featureType": "road",
-      "elementType": "labels.icon",
-      "stylers": [
-        {
-          "visibility": "off"
-        }
-      ]
-    },
-    {
-      "featureType": "transit",
-      "stylers": [
-        {
-          "visibility": "off"
-        }
-      ]
+// ─── Reusable Metric Card ─────────────────────────────────────────────────────
+class _MetricCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+  final Color color;
+
+  const _MetricCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      decoration: BoxDecoration(
+          color: color.withOpacity(0.07),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.2)),
+      ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 5),
+            Text(
+              label,
+              style: GoogleFonts.sora(
+                fontSize: 9,
+                color: Colors.grey.shade600,
+                fontWeight: FontWeight.w500,
+          ),
+        ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: GoogleFonts.sora(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: color,
+          ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+        ),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+// ─── Rating Bottom Sheet ──────────────────────────────────────────────────────
+class _RatingSheet extends StatefulWidget {
+  final String driverName;
+  final String totalPrice;
+  final void Function(int stars, String? feedback) onRate;
+  final VoidCallback onSkip;
+  final VoidCallback onConfirmPayment;
+
+  const _RatingSheet({
+    required this.driverName,
+    required this.totalPrice,
+    required this.onRate,
+    required this.onSkip,
+    required this.onConfirmPayment,
+  });
+
+  @override
+  State<_RatingSheet> createState() => _RatingSheetState();
+}
+
+class _RatingSheetState extends State<_RatingSheet> {
+  int _stars = 0;
+  final _ctrl = TextEditingController();
+
+  final List<String> _quickTags = [
+    '👍 Great Driver',
+    '🚗 Smooth Ride',
+    '⏱ On Time',
+    '😊 Friendly',
+    '🧹 Clean Car',
+  ];
+
+  final Set<String> _selectedTags = {};
+
+  String get _ratingLabel {
+    switch (_stars) {
+      case 1: return 'Very Bad 😞';
+      case 2: return 'Bad 😕';
+      case 3: return 'Okay 😐';
+      case 4: return 'Good 😊';
+      case 5: return 'Excellent! 🤩';
+      default: return 'Tap a star to rate';
     }
-  ]
-  ''';
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          24, 16, 24, MediaQuery.of(context).viewInsets.bottom + 28),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Trip summary card
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [_kPrimary.withOpacity(0.08), _kAccent.withOpacity(0.06)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _kPrimary.withOpacity(0.1)),
+            ),
+            child: Row(
+              children: [
+               
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Trip Completed!',
+                        style: GoogleFonts.sora(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: _kPrimary,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'with ${widget.driverName}',
+                        style: GoogleFonts.sora(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Total Fare',
+                      style: GoogleFonts.sora(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                    Text(
+                      '${widget.totalPrice} RWF',
+                      style: GoogleFonts.sora(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: _kAccent,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          Text(
+            'How was your ride?',
+            style: GoogleFonts.sora(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Colors.grey.shade800,
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Dynamic rating label
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Text(
+              _ratingLabel,
+              key: ValueKey(_stars),
+              style: GoogleFonts.sora(
+                fontSize: 13,
+                color: _stars > 0 ? _kAccent : Colors.grey.shade400,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // Stars
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(5, (i) {
+              final filled = i < _stars;
+              return GestureDetector(
+                onTap: () => setState(() => _stars = i + 1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  child: AnimatedScale(
+                    scale: filled ? 1.25 : 1.0,
+                    duration: const Duration(milliseconds: 200),
+                    child: Icon(
+                      filled ? Icons.star_rounded : Icons.star_outline_rounded,
+                      color: filled ? Colors.amber : Colors.grey.shade300,
+                      size: 44,
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Quick tag chips
+          if (_stars > 0) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'What went well?',
+                style: GoogleFonts.sora(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade500,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _quickTags.map((tag) {
+                final selected = _selectedTags.contains(tag);
+                return GestureDetector(
+                  onTap: () => setState(() {
+                    selected ? _selectedTags.remove(tag) : _selectedTags.add(tag);
+                  }),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: selected ? _kAccent.withOpacity(0.12) : Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: selected ? _kAccent : Colors.grey.shade200,
+                        width: selected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      tag,
+                      style: GoogleFonts.sora(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: selected ? _kAccent : Colors.grey.shade600,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Comment field
+          TextField(
+            controller: _ctrl,
+            decoration: InputDecoration(
+              hintText: 'Leave a comment (optional)',
+              hintStyle: GoogleFonts.sora(color: Colors.grey.shade400, fontSize: 13),
+              filled: true,
+              fillColor: Colors.grey.shade50,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: Colors.grey.shade200),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: _kAccent, width: 1.5),
+              ),
+              prefixIcon: Icon(Icons.chat_bubble_outline_rounded,
+                  size: 18, color: Colors.grey.shade400),
+            ),
+            maxLines: 3,
+            style: GoogleFonts.sora(fontSize: 13),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Buttons
+          Row(
+            children: [
+              OutlinedButton(
+                onPressed: widget.onSkip,
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 20),
+                  side: BorderSide(color: Colors.grey.shade300),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16)),
+                ),
+                child: Text(
+                  'Skip',
+                  style: GoogleFonts.sora(color: Colors.grey.shade500),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _stars == 0
+                      ? null
+                      : () {
+                          final tagFeedback = _selectedTags.isNotEmpty
+                              ? _selectedTags.join(', ')
+                              : null;
+                          final comment = _ctrl.text.trim().isEmpty
+                              ? tagFeedback
+                              : '${_ctrl.text.trim()}${tagFeedback != null ? ' | $tagFeedback' : ''}';
+                          widget.onRate(_stars, comment);
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _kAccent,
+                    disabledBackgroundColor: Colors.grey.shade200,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16)),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Submit Rating',
+                    style: GoogleFonts.sora(
+                        color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Styled Dialog ────────────────────────────────────────────────────────────
+class _StyledDialog extends StatelessWidget {
+  final String icon;
+  final Color iconColor;
+  final String title;
+  final String message;
+  final List<_DialogAction> actions;
+
+  const _StyledDialog({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.message,
+    required this.actions,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(icon, style: const TextStyle(fontSize: 48)),
+            const SizedBox(height: 12),
+            Text(title,
+                style: GoogleFonts.sora(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    color: _kPrimary)),
+            const SizedBox(height: 8),
+            Text(message,
+                style: GoogleFonts.sora(
+                    fontSize: 13, color: Colors.grey.shade600),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 20),
+            ...actions.map((a) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: a.onTap,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: a.isPrimary ? _kAccent : Colors.grey.shade100,
+                        foregroundColor: a.isPrimary ? Colors.white : _kPrimary,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
+                  ),
+                      child: Text(a.label,
+                          style: GoogleFonts.sora(fontWeight: FontWeight.w700)),
+                ),
+              ),
+                )),
+        ],
+      ),
+      ),
+    );
+  }
+}
+
+class _DialogAction {
+  final String label;
+  final bool isPrimary;
+  final VoidCallback onTap;
+  const _DialogAction({
+    required this.label,
+    required this.onTap,
+    this.isPrimary = false,
+  });
 }

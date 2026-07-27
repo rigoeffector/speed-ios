@@ -12,8 +12,9 @@ import 'package:speed_ios/ui/screens/settings.dart';
 import 'package:speed_ios/ui/screens/welcome.dart';
 import 'package:speed_ios/ui/screens/clients/home.dart';
 import 'package:speed_ios/ui/screens/clients/list.my.requests.dart';
-import 'package:speed_ios/ui/screens/clients/favorite_pickup_location.dart';
+ import 'package:speed_ios/ui/screens/clients/favorite_pickup_location.dart';
 import 'package:speed_ios/ui/screens/clients/home_client.dart';
+import '../ui/screens/clients/add_referral_code_screen.dart';
 
 class AppNavigation {
   AppNavigation._();
@@ -63,10 +64,7 @@ class AppNavigation {
           GoRoute(
             path: '/verify',
             name: verify,
-            builder: (context, state) => VerifyPhoneNumber(
-              key: state.pageKey,
-              deviceToken: state.uri.queryParameters['deviceToken'],
-              ),
+            builder: (context, state) => VerifyPhoneNumber(key: state.pageKey),
           ),
           GoRoute(
             path: '/verifyOtp',
@@ -85,7 +83,14 @@ class AppNavigation {
             builder: (context, state) => ClientProfileScreen(
               key: state.pageKey,
               clientId: state.uri.queryParameters['clientId'],
-                deviceToken: state.uri.queryParameters['deviceToken'],
+            ),
+          ),
+             GoRoute(
+            path: '/addReferralCode',
+            name: addReferralCode,
+            builder: (context, state) => AddReferralCodeScreen(
+              key: state.pageKey,
+              clientId: state.uri.queryParameters['clientId'],
             ),
           ),
           GoRoute(
@@ -117,17 +122,17 @@ class AppNavigation {
               ),
             ],
           ),
-            GoRoute(
+          GoRoute(
             path: '/clientDirections',
             name: clientDirections,
             builder: (context, state) => AdvancedClientTrackingScreen(
               key: state.pageKey,
               requestId: state.uri.queryParameters['requestId'],
+              originLocation: state.uri.queryParameters['originLocation'],
+              destinationLocation:
+                  state.uri.queryParameters['destinationLocation'],
               clientNames: state.uri.queryParameters['clientNames'],
               clientPhone: state.uri.queryParameters['clientPhone'],
-                destinationLocation:
-                  state.uri.queryParameters['destinationLocation'],
-              originLocation: state.uri.queryParameters['originLocation'],
               driverName: state.uri.queryParameters['driverName'],
               driverPhone: state.uri.queryParameters['driverPhone'],
             ),
@@ -185,7 +190,7 @@ class AppNavigation {
     context.safeGoNamed('/clientProfile?clientId=$clientId');
   }
 
-  static void navigateToRefreshRequest(BuildContext context) {
+static void navigateToRefreshRequest(BuildContext context) {
     context.safeGoNamed(myRequests,
         params: {'refresh': DateTime.now().millisecondsSinceEpoch.toString()});
   }
@@ -194,6 +199,7 @@ class AppNavigation {
     context.safeGoNamed(home,
         params: {'refresh': DateTime.now().millisecondsSinceEpoch.toString()});
   }
+
 
   static void navigateBack(BuildContext context) {
     if (context.canPop()) {
@@ -226,19 +232,19 @@ extension NavigationExtension on BuildContext {
     if (canPop()) {
       pop();
     } else {
-      go('/home');
+      AppNavigation.router.go('/home');
     }
   }
 
   void safeGoNamed(String name, {Map<String, String>? params}) {
     try {
       if (params != null) {
-        goNamed(name, queryParameters: params);
+        AppNavigation.router.goNamed(name, queryParameters: params);
       } else {
-        goNamed(name);
+        AppNavigation.router.goNamed(name);
       }
     } catch (e) {
-      go('/home');
+      AppNavigation.router.go('/home');
     }
   }
 }

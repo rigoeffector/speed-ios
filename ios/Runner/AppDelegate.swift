@@ -10,7 +10,6 @@ import Firebase
     ) -> Bool {
         FirebaseApp.configure()
         GMSServices.provideAPIKey("AIzaSyCYDlYrck8eGtK_op4k-W0STOjeMx0MRRI")
-        application.registerForRemoteNotifications()
         GeneratedPluginRegistrant.register(with: self)
         return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }

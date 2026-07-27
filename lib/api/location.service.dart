@@ -1,13 +1,12 @@
+// lib/services/location_service.dart
 import 'dart:convert';
-
 import 'package:speed_ios/api/timeout.exception.dart';
-import 'package:speed_ios/model/client.favorite.location.model.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:speed_ios/model/client.favorite.location.model.dart';
 import 'package:speed_ios/model/available.driver/available.driver.on.map.model.dart';
 import 'package:speed_ios/model/nearby_driver_model.dart';
-
-import '../model/client.location.model.dart';
+import 'package:speed_ios/model/client.location.model.dart';
 
 class LocationService {
   final http.Client _client;
@@ -61,8 +60,8 @@ class LocationService {
             },
           );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      // print('Response status: ${response.statusCode}');
+      // print('Response body: ${response.body}');
 
       final Map<String, dynamic> results = jsonDecode(response.body);
 

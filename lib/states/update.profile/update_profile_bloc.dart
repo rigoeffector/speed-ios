@@ -8,20 +8,23 @@ part 'update_profile_event.dart';
 part 'update_profile_state.dart';
 
 class UpdateProfileBloc extends Bloc<UpdateProfileEvent, UpdateProfileState> {
-  AuthService authService;
-  UpdateProfileBloc(UpdateProfileState updateProfileState, this.authService)
-      : super(updateProfileState) {
+    AuthService authService;
+  UpdateProfileBloc(UpdateProfileState updateProfileState, this.authService) : super(updateProfileState) {
     on<UpdateProfileEvent>((event, emit) async {
-      if (event is StartEvent) {
+       if (event is StartEvent) {
         emit(UpdateProfileInitial());
       } else {
         UpdateProfileModel updateProfileModel;
         if (event is HandleUpdateProfileInformation) {
           emit(UpdateClientLoading());
           updateProfileModel = await authService.postUpdateClientInfoV2(
-              event.clientId, event.clientName, event.photo);
+            event.clientId,
+            event.clientName,
+            event.photo
+          );
           if (updateProfileModel.success) {
-            emit(UpdateProfileSuccess(updateProfileModel: updateProfileModel));
+            emit(UpdateProfileSuccess(
+                updateProfileModel: updateProfileModel));
           } else {
             emit(UpdateProfileError(
                 message: updateProfileModel.message.toString()));

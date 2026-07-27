@@ -243,8 +243,9 @@ class _SetDestinationState extends State<SetDestination> {
                       children: [
                         InkWell(
                           onTap: () {
-                            context.safeGoNamed(home,
-                                params: {'userId': widget.userId.toString()});
+                            context.safeGoNamed(home, params: {
+                              'userId': widget.userId.toString()
+                            });
                           },
                           child: const Padding(
                             padding: EdgeInsets.all(8.0),

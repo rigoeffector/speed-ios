@@ -1,7 +1,9 @@
- 
+import 'dart:io';
+
 import 'package:speed_ios/states/update.profile/update_profile_bloc.dart';
 import 'package:speed_ios/ui/screens/clients/set_destination.dart';
- import 'package:speed_ios/utils/notifiers.dart';
+import 'package:speed_ios/ui/widgets/buttons/button.dart';
+import 'package:speed_ios/utils/notifiers.dart';
 import 'package:speed_ios/utils/routes.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/cupertino.dart';
@@ -14,7 +16,8 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:speed_ios/api/auth.service.dart';
- import 'package:shared_preferences/shared_preferences.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../model/user_model.dart';
 import '../../states/client.profile.data/client_profile_bloc.dart';
@@ -78,7 +81,19 @@ class _UserProfileState extends State<UserProfile> {
         .add(FetchAllClientInformation(clientId: widget.userId.toString()));
     super.didChangeDependencies();
   }
- 
+
+  File? _image;
+  PickedFile? _pickedFile;
+  final _picker = ImagePicker();
+  // Implementing the image picker
+  Future<void> _pickImage() async {
+    // _pickedFile = await _picker.getImage(source: ImageSource.gallery);
+    // if (_pickedFile != null) {
+    //   setState(() {
+    //     _image = File(_pickedFile!.path);
+    //   });
+    // }
+  }
 
   void _toggle() {
     setState(() {
@@ -156,12 +171,44 @@ class _UserProfileState extends State<UserProfile> {
                                                       width: 130,
                                                       height: 130,
                                                     ),
-                                                   Container(
+                                                    _pickedFile != null
+                                                        ? Container(
+                                                            alignment: Alignment
+                                                                .center,
+                                                            width: 120,
+                                                            height: 120,
+                                                            // color: Colors.grey[300],
+                                                            decoration:
+                                                                BoxDecoration(
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                              border: Border.all(
+                                                                  color:
+                                                                      greyColor,
+                                                                  width: 4),
+                                                            ),
+
+                                                            child: CircleAvatar(
+                                                              radius: 73,
+                                                              child: ClipOval(
+                                                                child:
+                                                                    Image.file(
+                                                                  File(_pickedFile!
+                                                                      .path),
+                                                                  fit: BoxFit
+                                                                      .cover,
+                                                                  width: 120,
+                                                                  height: 120,
+                                                                ),
+                                                              ),
+                                                            ),
+                                                          )
+                                                        : Container(
                                                             height: 120,
                                                             width: 120,
                                                             margin:
                                                                 const EdgeInsets
-                                                                    .symmetric(
+                                                                        .symmetric(
                                                                     vertical:
                                                                         5),
                                                             decoration: BoxDecoration(
@@ -194,7 +241,7 @@ class _UserProfileState extends State<UserProfile> {
                                                         child: Center(
                                                           child: IconButton(
                                                               onPressed: () {
-                                                             
+                                                                _pickImage();
                                                               },
                                                               icon: const Icon(
                                                                 Icons
@@ -244,7 +291,7 @@ class _UserProfileState extends State<UserProfile> {
                                                                   .circular(
                                                                       10)),
                                                       padding: const EdgeInsets
-                                                          .symmetric(
+                                                              .symmetric(
                                                           vertical: 2,
                                                           horizontal: 15),
                                                       child: TextFormField(
@@ -328,17 +375,17 @@ class _UserProfileState extends State<UserProfile> {
                                                       onTap: () {
                                                         if (nameController
                                                             .text.isNotEmpty) {
-                                                          // updateClientAccountBloc
-                                                          //     .add(
-                                                          //         HandleUpdateProfileInformation(
-                                                          //   clientId: widget
-                                                          //       .userId
-                                                          //       .toString(),
-                                                          //   clientName:
-                                                          //       nameController
-                                                          //           .text,
-                                                          //   photo: "",
-                                                          // ));
+                                                          updateClientAccountBloc
+                                                              .add(
+                                                                  HandleUpdateProfileInformation(
+                                                            clientId: widget
+                                                                .userId
+                                                                .toString(),
+                                                            clientName:
+                                                                nameController
+                                                                    .text,
+                                                            photo: _pickedFile!,
+                                                          ));
                                                         }
                                                       },
                                                     ),
@@ -426,7 +473,7 @@ class _UserProfileState extends State<UserProfile> {
                                                             width: 70,
                                                             margin:
                                                                 const EdgeInsets
-                                                                    .only(
+                                                                        .only(
                                                                     bottom: 7,
                                                                     top: 7,
                                                                     right: 10),

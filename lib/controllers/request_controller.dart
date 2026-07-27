@@ -12,8 +12,7 @@ class RequestsRepository {
   static const String _defaultErrorMessage =
       'Something went wrong, please try again, or call support@speed.tz!';
 
-  RequestsRepository({http.Client? client})
-      : httpClient = client ?? http.Client();
+  RequestsRepository({http.Client? client}) : httpClient = client ?? http.Client();
 
   String get _baseUrl => dotenv.get('mainUrl', fallback: '');
 

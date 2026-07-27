@@ -2,6 +2,7 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:speed_ios/api/auth.service.dart';
 import '../../model/verify.otp.model.dart';
+
 part 'verify_otp_event.dart';
 part 'verify_otp_state.dart';
 
@@ -20,13 +21,17 @@ class VerifyOtpBloc extends Bloc<VerifyOtpEvent, VerifyOtpState> {
         emit(VerifyOtpLoading());
         try {
           print(
-              'VerifyOtpBloc: Calling postVerifyOtp API with phone: ${event.phone}, otp: ${event.otp.replaceAll(RegExp(r'.'), '*')}');
+              'VerifyOtpBloc: Calling postVerifyOtp API with phone: ${event.phone}, otp: ${event.otp.replaceAll(RegExp(r'.'), '*')}, referralCode: ${event.referralCode ?? 'none'}');
+
           VerifyOtpModel verifyOtpModel = await authService.postVerifyOtp(
             event.phone,
             event.otp,
+            referralCode: event.referralCode,
           );
+
           print(
               'VerifyOtpBloc: postVerifyOtp response: ${verifyOtpModel.toJson()}');
+
           if (verifyOtpModel.success) {
             print('VerifyOtpBloc: OTP verification successful');
             emit(VerifyOtpSuccess(verifyOtpModel: verifyOtpModel));
@@ -54,12 +59,14 @@ class VerifyOtpBloc extends Bloc<VerifyOtpEvent, VerifyOtpState> {
         try {
           print(
               'VerifyOtpBloc: Calling postResendOtp API with phone: ${event.phone}');
-          // Assuming you have a resend OTP endpoint
+
           VerifyOtpModel resendOtpModel = await authService.postResendOtp(
             event.phone,
           );
+
           print(
               'VerifyOtpBloc: postResendOtp response: ${resendOtpModel.toJson()}');
+
           if (resendOtpModel.success) {
             print('VerifyOtpBloc: OTP resend successful');
             emit(ResendOtpSuccess(
@@ -78,6 +85,43 @@ class VerifyOtpBloc extends Bloc<VerifyOtpEvent, VerifyOtpState> {
             message: e.toString(),
           ));
         }
+      } else if (event is HandleAddReferralCode) {
+        print(
+            'VerifyOtpBloc: Handling add referral code for clientId: ${event.clientId}');
+        emit(AddReferralCodeLoading());
+        try {
+          print(
+              'VerifyOtpBloc: Calling postAddReferralCode API with clientId: ${event.clientId}, referralCode: ${event.referralCode}');
+
+          VerifyOtpModel result = await authService.postAddReferralCode(
+            event.clientId,
+            event.referralCode,
+          );
+
+          print(
+              'VerifyOtpBloc: postAddReferralCode response: ${result.toJson()}');
+
+          if (result.success) {
+            print('VerifyOtpBloc: Referral code added successfully');
+            emit(AddReferralCodeSuccess(
+              message: result.message ?? 'Referral code added successfully',
+            ));
+          } else {
+            print(
+                'VerifyOtpBloc: Adding referral code failed: ${result.message}');
+            emit(AddReferralCodeError(
+              message: result.message ?? 'Failed to add referral code',
+            ));
+          }
+        } catch (e) {
+          print('VerifyOtpBloc: Error while adding referral code: $e');
+          emit(AddReferralCodeError(
+            message: e.toString(),
+          ));
+        }
+      } else if (event is ResetVerifyOtpState) {
+        print('VerifyOtpBloc: Resetting state to initial');
+        emit(VerifyOtpInitial());
       }
     });
   }

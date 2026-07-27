@@ -10,34 +10,9 @@ part 'create_request_state.dart';
 class CreateRequestBloc extends Bloc<CreateRequestEvent, CreateRequestState> {
   AuthService requestsRepository;
 
-  // CreateRequestBloc(
-  //     CreateRequestState createRequestState, this.requestsRepository)
-  //     : super(createRequestState) {
-  //   on<CreateRequestEvent>((event, emit) async {
-  //     if (event is StartEvent) {
-  //       emit(CreateRequestInitial());
-  //     } else if (event is HandleCreateRequest) {
-  //       emit(CreateRequestLoading());
-  //       MyRequestsModel myRequestsModel =
-  //           await requestsRepository.dispatchingRequest(
-  //               event.motorBikerId,
-  //               event.clientId,
-  //               event.requestType,
-  //               event.requestedTime,
-  //               event.originLocation,
-  //               event.destinationLocation,
-  //               event.status);
-  //       if (myRequestsModel.success) {
-  //         emit(CreateRequestSuccess(myRequestsModel: myRequestsModel));
-  //       } else {
-  //         emit(CreateRequestError(message: myRequestsModel.message.toString()));
-  //       }
-  //     }
-  //   });
-  // }
+ 
 
-  CreateRequestBloc(
-      CreateRequestState createRequestState, this.requestsRepository)
+  CreateRequestBloc(CreateRequestState createRequestState, this.requestsRepository)
       : super(createRequestState) {
     on<CreateRequestEvent>((event, emit) async {
       if (event is StartEvent) {
@@ -47,19 +22,13 @@ class CreateRequestBloc extends Bloc<CreateRequestEvent, CreateRequestState> {
         if (event is HandleCreateRequest) {
           emit(CreateRequestLoading());
           myRequestsModel = await requestsRepository.postCLientREquest(
-              event.motorBikerId,
-              event.clientId,
-              event.requestType,
-              event.requestedTime,
-              event.originLocation,
-              event.destinationLocation,
-              event.status);
+              event.requestBody, requestType: event.requestType);
           if (myRequestsModel.success) {
-            emit(CreateRequestSuccess(myRequestsModel: myRequestsModel));
+            emit(CreateRequestSuccess(
+                myRequestsModel: myRequestsModel));
           } else {
             emit(CreateRequestError(
-                message: myRequestsModel.message.toString(),
-                myRequestsModel: myRequestsModel));
+                message: myRequestsModel.message.toString(), myRequestsModel: myRequestsModel));
           }
         }
       }

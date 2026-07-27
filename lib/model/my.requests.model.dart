@@ -57,6 +57,17 @@ class RequestData {
   final String? cancelledBy;
   final String? cancellationReason;
   final String? cancelledAt;
+  // Courier-specific fields
+  final DispatchInfo? dispatchInfo;
+  final CourierLocationData? from;
+  final CourierLocationData? to;
+  final String? packageDescription;
+  final String? packageWeight;
+  final String? packageDimensions;
+  final double? declaredValue;
+  final String? specialInstructions;
+  final List<CourierCheckpointData> courierCheckpoints;
+  final String? courierCheckpointsJson;
 
   const RequestData({
     this.id,
@@ -73,6 +84,16 @@ class RequestData {
     this.cancelledBy,
     this.cancellationReason,
     this.cancelledAt,
+    this.dispatchInfo,
+    this.from,
+    this.to,
+    this.packageDescription,
+    this.packageWeight,
+    this.packageDimensions,
+    this.declaredValue,
+    this.specialInstructions,
+    this.courierCheckpoints = const [],
+    this.courierCheckpointsJson,
   });
 
   factory RequestData.fromJson(Map<String, dynamic> json) {
@@ -95,6 +116,27 @@ class RequestData {
       cancelledBy: _fromJsonString(json['cancelledBy']),
       cancellationReason: _fromJsonString(json['cancellationReason']),
       cancelledAt: _fromJsonString(json['cancelledAt']),
+      dispatchInfo: json['dispatchInfo'] is Map<String, dynamic>
+          ? DispatchInfo.fromJson(json['dispatchInfo'] as Map<String, dynamic>)
+          : null,
+      from: json['from'] is Map<String, dynamic>
+          ? CourierLocationData.fromJson(json['from'] as Map<String, dynamic>)
+          : null,
+      to: json['to'] is Map<String, dynamic>
+          ? CourierLocationData.fromJson(json['to'] as Map<String, dynamic>)
+          : null,
+      packageDescription: _fromJsonString(json['packageDescription']),
+      packageWeight: _fromJsonString(json['packageWeight']),
+      packageDimensions: _fromJsonString(json['packageDimensions']),
+      declaredValue: (json['declaredValue'] as num?)?.toDouble(),
+      specialInstructions: _fromJsonString(json['specialInstructions']),
+      courierCheckpoints: (json['courierCheckpoints'] is List)
+          ? (json['courierCheckpoints'] as List)
+              .whereType<Map<String, dynamic>>()
+              .map((e) => CourierCheckpointData.fromJson(e))
+              .toList()
+          : const [],
+      courierCheckpointsJson: _fromJsonString(json['courierCheckpointsJson']),
     );
   }
 
@@ -142,12 +184,23 @@ class RequestData {
       'cancelledBy': cancelledBy,
       'cancellationReason': cancellationReason,
       'cancelledAt': cancelledAt,
+      if (dispatchInfo != null) 'dispatchInfo': dispatchInfo!.toJson(),
+      if (from != null) 'from': from!.toJson(),
+      if (to != null) 'to': to!.toJson(),
+      if (packageDescription != null) 'packageDescription': packageDescription,
+      if (packageWeight != null) 'packageWeight': packageWeight,
+      if (packageDimensions != null) 'packageDimensions': packageDimensions,
+      if (declaredValue != null) 'declaredValue': declaredValue,
+      if (specialInstructions != null) 'specialInstructions': specialInstructions,
+      if (courierCheckpoints.isNotEmpty)
+        'courierCheckpoints': courierCheckpoints.map((e) => e.toJson()).toList(),
+      if (courierCheckpointsJson != null) 'courierCheckpointsJson': courierCheckpointsJson,
     };
   }
 
   @override
   String toString() =>
-      'RequestData(id: $id, requestType: $requestType, status: $status, origin: $originLocation, destination: $destinationLocation)';
+      'RequestData(id: $id, requestType: $requestType, status: $status, origin: $originLocation, destination: $destinationLocation, checkpoints: ${courierCheckpoints.length})';
 }
 
 class MotorBiker {
@@ -274,6 +327,212 @@ class Client {
   @override
   String toString() =>
       'Client(id: $id, name: $fname $lname, phone: $phone, status: $status)';
+}
+
+class DispatchInfo {
+  final int? driverId;
+  final String? driverName;
+  final String? driverPhone;
+  final bool? manualDispatch;
+  final int? priorityLevel;
+
+  const DispatchInfo({
+    this.driverId,
+    this.driverName,
+    this.driverPhone,
+    this.manualDispatch,
+    this.priorityLevel,
+  });
+
+  factory DispatchInfo.fromJson(Map<String, dynamic> json) {
+    return DispatchInfo(
+      driverId: _parseInt(json['driverId']),
+      driverName: json['driverName'] as String?,
+      driverPhone: json['driverPhone'] as String?,
+      manualDispatch: json['manualDispatch'] as bool?,
+      priorityLevel: _parseInt(json['priorityLevel']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'driverId': driverId,
+        'driverName': driverName,
+        'driverPhone': driverPhone,
+        'manualDispatch': manualDispatch,
+        'priorityLevel': priorityLevel,
+      };
+
+  @override
+  String toString() =>
+      'DispatchInfo(driverId: $driverId, driverName: $driverName)';
+}
+
+class CourierLocationData {
+  final String? name;
+  final double? latitude;
+  final double? longitude;
+  final String? receiverName;
+  final String? receiverPhone;
+  final bool? driverApprovalRequired;
+  final bool? driverApproved;
+  final bool? receiverApproved;
+
+  const CourierLocationData({
+    this.name,
+    this.latitude,
+    this.longitude,
+    this.receiverName,
+    this.receiverPhone,
+    this.driverApprovalRequired,
+    this.driverApproved,
+    this.receiverApproved,
+  });
+
+  factory CourierLocationData.fromJson(Map<String, dynamic> json) {
+    return CourierLocationData(
+      name: json['name'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      receiverName: json['receiverName'] as String?,
+      receiverPhone: json['receiverPhone'] as String?,
+      driverApprovalRequired: json['driverApprovalRequired'] as bool?,
+      driverApproved: json['driverApproved'] as bool?,
+      receiverApproved: json['receiverApproved'] as bool?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'receiverName': receiverName,
+        'receiverPhone': receiverPhone,
+        'driverApprovalRequired': driverApprovalRequired,
+        'driverApproved': driverApproved,
+        'receiverApproved': receiverApproved,
+      };
+
+  @override
+  String toString() => name ?? '';
+}
+
+class CourierCheckpointData {
+  final int? id;
+  final String? name;
+  final double? latitude;
+  final double? longitude;
+  final int? order;
+  final String? notes;
+  final String? receiverName;
+  final String? receiverPhone;
+  final bool? requiresReceiverApproval;
+  final String? packageDescription;
+  final String? packageWeight;
+  final String? specialInstructions;
+  final String? checkpointStatus;
+  final bool? otpVerified;
+  final int? otpAttempts;
+  final String? approvedAt;
+  final String? completedAt;
+  final String? approvedBy;
+  final String? deliveryNotes;
+  final String? otpVerifiedAt;
+  final String? otpGeneratedAt;
+  final String? otpExpiresAt;
+
+  const CourierCheckpointData({
+    this.id,
+    this.name,
+    this.latitude,
+    this.longitude,
+    this.order,
+    this.notes,
+    this.receiverName,
+    this.receiverPhone,
+    this.requiresReceiverApproval,
+    this.packageDescription,
+    this.packageWeight,
+    this.specialInstructions,
+    this.checkpointStatus,
+    this.otpVerified,
+    this.otpAttempts,
+    this.approvedAt,
+    this.completedAt,
+    this.approvedBy,
+    this.deliveryNotes,
+    this.otpVerifiedAt,
+    this.otpGeneratedAt,
+    this.otpExpiresAt,
+  });
+
+  DateTime? get approvedDateTime =>
+      approvedAt != null ? DateTime.tryParse(approvedAt!) : null;
+  DateTime? get completedDateTime =>
+      completedAt != null ? DateTime.tryParse(completedAt!) : null;
+  DateTime? get otpVerifiedDateTime =>
+      otpVerifiedAt != null ? DateTime.tryParse(otpVerifiedAt!) : null;
+  DateTime? get otpGeneratedDateTime =>
+      otpGeneratedAt != null ? DateTime.tryParse(otpGeneratedAt!) : null;
+  DateTime? get otpExpiresDateTime =>
+      otpExpiresAt != null ? DateTime.tryParse(otpExpiresAt!) : null;
+
+  factory CourierCheckpointData.fromJson(Map<String, dynamic> json) {
+    return CourierCheckpointData(
+      id: _parseInt(json['id']),
+      name: json['name'] as String?,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      order: json['order'] as int?,
+      notes: json['notes'] as String?,
+      receiverName: json['receiverName'] as String?,
+      receiverPhone: json['receiverPhone'] as String?,
+      requiresReceiverApproval: json['requiresReceiverApproval'] as bool?,
+      packageDescription: json['packageDescription'] as String?,
+      packageWeight: json['packageWeight'] as String?,
+      specialInstructions: json['specialInstructions'] as String?,
+      checkpointStatus: json['checkpointStatus'] as String?,
+      otpVerified: json['otpVerified'] as bool?,
+      otpAttempts: json['otpAttempts'] as int?,
+      approvedAt: json['approvedAt'] as String?,
+      completedAt: json['completedAt'] as String?,
+      approvedBy: json['approvedBy'] as String?,
+      deliveryNotes: json['deliveryNotes'] as String?,
+      otpVerifiedAt: json['otpVerifiedAt'] as String?,
+      otpGeneratedAt: json['otpGeneratedAt'] as String?,
+      otpExpiresAt: json['otpExpiresAt'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    final Map<String, dynamic> m = {};
+    if (id != null) m['id'] = id;
+    m['name'] = name;
+    if (latitude != null) m['latitude'] = latitude;
+    if (longitude != null) m['longitude'] = longitude;
+    if (order != null) m['order'] = order;
+    if (notes != null) m['notes'] = notes;
+    if (receiverName != null) m['receiverName'] = receiverName;
+    if (receiverPhone != null) m['receiverPhone'] = receiverPhone;
+    if (requiresReceiverApproval != null)
+      m['requiresReceiverApproval'] = requiresReceiverApproval;
+    if (packageDescription != null) m['packageDescription'] = packageDescription;
+    if (packageWeight != null) m['packageWeight'] = packageWeight;
+    if (specialInstructions != null) m['specialInstructions'] = specialInstructions;
+    if (checkpointStatus != null) m['checkpointStatus'] = checkpointStatus;
+    if (otpVerified != null) m['otpVerified'] = otpVerified;
+    if (otpAttempts != null) m['otpAttempts'] = otpAttempts;
+    if (approvedAt != null) m['approvedAt'] = approvedAt;
+    if (completedAt != null) m['completedAt'] = completedAt;
+    if (approvedBy != null) m['approvedBy'] = approvedBy;
+    if (deliveryNotes != null) m['deliveryNotes'] = deliveryNotes;
+    if (otpVerifiedAt != null) m['otpVerifiedAt'] = otpVerifiedAt;
+    if (otpGeneratedAt != null) m['otpGeneratedAt'] = otpGeneratedAt;
+    if (otpExpiresAt != null) m['otpExpiresAt'] = otpExpiresAt;
+    return m;
+  }
+
+  @override
+  String toString() => name ?? '';
 }
 
 int? _parseInt(dynamic v) {

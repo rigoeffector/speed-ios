@@ -2,78 +2,65 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-<key>CADisableMinimumFrameDurationOnPhone</key>
-<true/>
-<key>CFBundleDevelopmentRegion</key>
-<string>$(DEVELOPMENT_LANGUAGE)</string>
-<key>CFBundleDisplayName</key>
-<string>SPEED Client</string>
-<key>CFBundleExecutable</key>
-<string>$(EXECUTABLE_NAME)</string>
-<key>CFBundleIdentifier</key>
-<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
-<key>CFBundleInfoDictionaryVersion</key>
-<string>6.0</string>
-<key>CFBundleName</key>
-<string>SPEED Client</string>
-<key>CFBundlePackageType</key>
-<string>APPL</string>
-<key>CFBundleShortVersionString</key>
-<string>$(FLUTTER_BUILD_NAME)</string>
-<key>CFBundleSignature</key>
-<string>????</string>
-<key>CFBundleVersion</key>
-<string>$(FLUTTER_BUILD_NUMBER)</string>
-<key>MinimumOSVersion</key>
-  <string>14.0</string>
-<key>LSApplicationQueriesSchemes</key>
-<array>
-<string>tel</string>
-<string>telprompt</string>
-</array>
-<key>LSRequiresIPhoneOS</key>
-<true/>
-<!-- Google Maps API Key -->
-<key>GMSApiKey</key>
-<string>AIzaSyCYDlYrck8eGtK_op4k-W0STOjeMx0MRRI</string>
-<!-- Required for local network / Bonjour / mDNS access -->
-<key>NSLocalNetworkUsageDescription</key>
-<string>This app uses the local network to discover and connect to nearby devices.</string>
-
-<key>NSBonjourServices</key>
-<array>
-    <string>_dartobservatory._tcp</string>
-</array>
-<!-- Location Permission Descriptions -->
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>SPEED Client needs your location to detect nearby speed cameras, monitor your current driving speed, and alert you when exceeding speed limits to ensure your safety on the road.</string>
-<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-<string>SPEED Client needs continuous access to your location to provide real-time speed monitoring and speed camera alerts even when the app is running in the background, ensuring your safety throughout your journey.</string>
-<key>NSLocationAlwaysUsageDescription</key>
-<string>SPEED Client requires background location access to continuously monitor your speed and provide timely alerts about speed cameras and speed limit violations, helping you drive safely at all times.</string>
-<!-- Background Modes (if needed for background location) -->
-<key>UIBackgroundModes</key>
-<array>
-<string>location</string>
-</array>
-<key>UIApplicationSupportsIndirectInputEvents</key>
-<true/>
-<key>UILaunchStoryboardName</key>
-<string>LaunchScreen</string>
-<key>UIMainStoryboardFile</key>
-<string>Main</string>
-<key>UISupportedInterfaceOrientations</key>
-<array>
-<string>UIInterfaceOrientationPortrait</string>
-<string>UIInterfaceOrientationLandscapeLeft</string>
-<string>UIInterfaceOrientationLandscapeRight</string>
-</array>
-<key>UISupportedInterfaceOrientations~ipad</key>
-<array>
-<string>UIInterfaceOrientationPortrait</string>
-<string>UIInterfaceOrientationPortraitUpsideDown</string>
-<string>UIInterfaceOrientationLandscapeRight</string>
-<string>UIInterfaceOrientationLandscapeLeft</string>
-</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>SPEED Client</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SPEED Client</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GMSApiKey</key>
+	<string>AIzaSyCYDlYrck8eGtK_op4k-W0STOjeMx0MRRI</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>telprompt</string>
+	</array>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>MinimumOSVersion</key>
+	<string>14.0</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_dartobservatory._tcp</string>
+	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app uses the local network to discover and connect to nearby devices.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>SPEED Client App needs your location to detect nearby speed cameras, monitor your current driving speed, and alert you when exceeding speed limits to ensure your safety on the road.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+	</array>
 </dict>
 </plist>

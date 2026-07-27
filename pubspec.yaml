@@ -22,8 +22,12 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # Gerayamahoro SPEED: 1.0.5+1. = Bundle ID: com.speed.gerayoamahoro
 # Gerayo Amahoro Client: 1.0.4+1 = Bundle ID: ios.speed.com
 
-# version: 1.0.6+1 #For Gerayo Amahoro Client - Final Release
-version: 1.0.3+1 #For Gerayamahoro SPEED - Final Release
+# ADD PACKAGE FIREBASE ON XCODE 
+# In Xcode, with your app project open, navigate to File > Add Packages
+# https://github.com/firebase/firebase-ios-sdk
+
+# version: 1.0.11+1 #For Gerayo Amahoro Client - Final Release
+version: 1.0.6+1 #For Gerayamahoro SPEED - Final Release
 
 environment:
   sdk: ^3.6.1

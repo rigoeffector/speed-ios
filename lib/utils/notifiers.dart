@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:speed_ios/utils/colors.dart';
 
-void showErrorAlert(String message, context) {
-  Flushbar(
+Future<void> showErrorAlert(String message, context) {
+  return Flushbar(
     title: "Error",
     message: message,
     icon: const Icon(
@@ -23,8 +23,8 @@ void showErrorAlert(String message, context) {
   ).show(context);
 }
 
-void showSuccessAlert(String message, context) {
-  Flushbar(
+Future<void> showSuccessAlert(String message, context) {
+  return Flushbar(
     title: "Success",
     message: message,
     icon: const Icon(

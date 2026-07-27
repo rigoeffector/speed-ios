@@ -6,8 +6,7 @@ import 'package:speed_ios/model/auth/register.client.model.dart';
 part 'register_client_event.dart';
 part 'register_client_state.dart';
 
-class RegisterClientBloc
-    extends Bloc<RegisterClientEvent, RegisterClientState> {
+class RegisterClientBloc extends Bloc<RegisterClientEvent, RegisterClientState> {
   final AuthService authService;
 
   RegisterClientBloc(RegisterClientState registerClientState, this.authService)

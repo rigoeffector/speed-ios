@@ -28,6 +28,7 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
   final focusNode = FocusNode();
   String? userId, countryCode;
   final formKey = GlobalKey<FormState>();
+ 
 
   @override
   void initState() {
@@ -36,6 +37,8 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
     loadCountryCode();
     super.initState();
   }
+
+
 
   String? jsonCode;
   loadCountryCode() async {
@@ -135,7 +138,6 @@ class _VerifyOtpScreenState extends State<VerifyOtpScreen> {
                               child: Pinput(
                                 controller: pinController,
                                 focusNode: focusNode,
-                                length: 6,
                                 defaultPinTheme: defaultPinTheme,
                                 validator: (value) {
                                   return value == widget.otp

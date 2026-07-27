@@ -32,7 +32,10 @@ class ActiveRequestData {
   final int? id;
   final String? requestType;
   final String? originLocation;
+  final double? originLatitude;
+  final double? originLongitude;
   final String? destinationLocation;
+  final List<CheckpointInfo>? checkpoints;
   final String? status;
   final String? requestedTime;
   final String? createdAt;
@@ -74,7 +77,10 @@ class ActiveRequestData {
     this.id,
     this.requestType,
     this.originLocation,
+    this.originLatitude,
+    this.originLongitude,
     this.destinationLocation,
+    this.checkpoints,
     this.status,
     this.requestedTime,
     this.createdAt,
@@ -99,12 +105,28 @@ class ActiveRequestData {
     this.client,
   });
 
+  /// Safely extract a location name from a field that may be a String or a Map.
+  static String? _parseLocationName(dynamic value) {
+    if (value is String) return value;
+    if (value is Map<String, dynamic>) return value['name'] as String?;
+    return null;
+  }
+
   factory ActiveRequestData.fromJson(Map<String, dynamic> json) {
+    final rawOrigin = json['originLocation'] ?? json['origin_location'];
+
     return ActiveRequestData(
       id: json['id'],
       requestType: json['requestType'] ?? json['request_type'],
-      originLocation: json['originLocation'] ?? json['origin_location'],
-      destinationLocation: json['destinationLocation'] ?? json['destination_location'],
+      originLocation: _parseLocationName(rawOrigin),
+      originLatitude: rawOrigin is Map ? (rawOrigin['latitude'] as num?)?.toDouble() : null,
+      originLongitude: rawOrigin is Map ? (rawOrigin['longitude'] as num?)?.toDouble() : null,
+      destinationLocation: _parseLocationName(json['destinationLocation'] ?? json['destination_location']),
+      checkpoints: json['checkpoints'] != null
+          ? (json['checkpoints'] as List)
+              .map((e) => CheckpointInfo.fromJson(e))
+              .toList()
+          : null,
       status: json['status'],
       requestedTime: json['requestedTime'] ?? json['requested_time'],
       createdAt: json['createdAt'] ?? json['created_at'],
@@ -138,8 +160,11 @@ class ActiveRequestData {
     return {
       'id': id,
       'requestType': requestType,
-      'originLocation': originLocation,
+      'originLocation': originLatitude != null
+          ? {'name': originLocation, 'latitude': originLatitude, 'longitude': originLongitude}
+          : originLocation,
       'destinationLocation': destinationLocation,
+      'checkpoints': checkpoints?.map((c) => c.toJson()).toList(),
       'status': status,
       'requestedTime': requestedTime,
       'createdAt': createdAt,
@@ -184,7 +209,8 @@ class ActiveRequestData {
   ].contains(status?.toUpperCase());
   
   // Helper to check if driver is assigned
-  bool get hasDriver => driverId != null && driverId! > 0;
+  bool get hasDriver =>
+      (driverId != null && driverId! > 0) || motorBiker != null;
 }
 
 class MotorBikerInfo {
@@ -309,4 +335,29 @@ class ClientInfo {
   
   // Helper to check if verified
   bool get isVerified => status?.toUpperCase() == 'VERIFIED';
+}
+
+class CheckpointInfo {
+  final String? name;
+  final double? latitude;
+  final double? longitude;
+  final int? order;
+
+  CheckpointInfo({this.name, this.latitude, this.longitude, this.order});
+
+  factory CheckpointInfo.fromJson(Map<String, dynamic> json) {
+    return CheckpointInfo(
+      name: json['name'],
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
+      order: json['order'],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'order': order,
+      };
 }

@@ -3,8 +3,6 @@
 import 'dart:convert';
 
 import 'package:speed_ios/model/my.requests.model.dart';
-import 'package:easy_localization/easy_localization.dart';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:image_picker/image_picker.dart';
@@ -12,10 +10,12 @@ import 'package:speed_ios/model/auth/client.profile.model.dart';
 import 'package:speed_ios/model/auth/register.client.model.dart';
 import 'package:speed_ios/model/auth/update.client.model.dart';
 import 'package:speed_ios/model/car.category.new.model.dart';
+import 'package:speed_ios/model/client_statistics_model.dart';
 import 'package:speed_ios/model/user.login.model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../model/active_request_model.dart';
+import '../model/received.sent.requests.model.dart';
 import '../model/update.profile.model.dart';
 import '../model/verify.otp.model.dart';
 
@@ -103,9 +103,8 @@ class AuthService {
     final responseString = await response.stream.bytesToString();
 
     Map<String, dynamic> results = jsonDecode(responseString);
-    if (kDebugMode) {
-      print("Client DATA $results");
-    }
+
+
     if (response.statusCode == 200) {
       UpdateProfileModel updateClientInfoModel =
           UpdateProfileModel.fromJson(results);
@@ -125,11 +124,33 @@ class AuthService {
     }
   }
 
+  Future<bool> updateClientDeviceToken(String clientId, String deviceToken) async {
+  Map<String, String> headers = {'Content-Type': 'application/json'};
+
+  try {
+    var response = await http.put(
+      Uri.parse('${dotenv.get('mainUrl')}/clients/$clientId'),
+      headers: headers,
+      body: json.encode({
+        'device_token': deviceToken.toString(),
+      }),
+    );
+
+
+
+    return response.statusCode == 200;
+  } catch (e) {
+    return false;
+  }
+}
+
+
   Future<UpdateClientInfoModel> postUpdateClientInfo(
-      String clientId, String fname, String lname, String deviceToken) async {
+      String clientId, String fname, String lname) async {
     SharedPreferences sharedPreferences = await SharedPreferences.getInstance();
     Map<String, String> headers = {'Content-Type': 'application/json'};
-    print(clientId.toString());
+
+
     final url =
         Uri.parse('${dotenv.get('mainUrl')}/clients/${clientId.toString()}');
     var response = await http.put(url,
@@ -137,14 +158,12 @@ class AuthService {
         body: json.encode({
           'fname': fname.toString(),
           'lname': lname.toString(),
-          'status': "ACTIVE",
-          'deviceToken': deviceToken.toString()
+          'status': "ACTIVE"
         }));
 
     Map<String, dynamic> results = jsonDecode(response.body);
-    if (kDebugMode) {
-      print("Client DATA $results");
-    }
+
+
     if (response.statusCode == 200) {
       UpdateClientInfoModel updateClientInfoModel =
           UpdateClientInfoModel.fromJson(results);
@@ -202,7 +221,8 @@ class AuthService {
     );
 
     Map<String, dynamic> results = jsonDecode(response.body);
-    print(results);
+
+
     if (response.statusCode == 200) {
       ClientProfileModel profileModel = ClientProfileModel.fromJson(results);
       return profileModel;
@@ -215,42 +235,21 @@ class AuthService {
     }
   }
 
-  Future<MyRequestsModel> postCLientREquest(
-      int motorBikerId,
-      int clientId,
-      String requestType,
-      DateTime requestedTime,
-      String originLocation,
-      String destinationLocation,
-      String status) async {
+   Future<MyRequestsModel> postCLientREquest(
+      Map<String, dynamic> requestBody, {String requestType = 'RIDE'}) async {
     Map<String, String> headers = {'Content-Type': 'application/json'};
-    // Format the DateTime to 'yyyy-MM-ddTHH:mm:ss'
-    String formattedDate =
-        DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(requestedTime);
-    String now = DateFormat("yyyy-MM-dd'T'HH:mm:ss").format(DateTime.now());
 
-    final url = Uri.parse('${dotenv.get('mainUrl')}/requests');
+    final path = requestType == 'COURIER' ? '/courier/requests' : '/requests';
+    final url = Uri.parse('${dotenv.get('mainUrl')}$path');
     var response = await http.post(url,
         headers: headers,
-        body: json.encode({
-          'motorBiker': {'id': motorBikerId},
-          'client': {'id': clientId},
-          'requestType': requestType,
-          'requestedTime': formattedDate,
-          'createdAt': now, // Set createdAt to the current date and time
-          'updatedAt': now, // Set updatedAt to the current date and time
-          'originLocation': originLocation,
-          'destinationLocation': destinationLocation,
-          'status': status
-        }));
-
+        body: json.encode(requestBody));
+ 
     Map<String, dynamic> results = jsonDecode(response.body);
-
+  
     if (response.statusCode == 200) {
       MyRequestsModel updateClientInfoModel = MyRequestsModel.fromJson(results);
-      if (kDebugMode) {
-        print("Client DATA ${updateClientInfoModel.success}");
-      }
+   
 
       return updateClientInfoModel;
     } else if (response.statusCode == 400) {
@@ -280,26 +279,13 @@ class AuthService {
     Uri uri = Uri.parse('${dotenv.get('mainUrl')}/requests/$requestId/cancel')
         .replace(queryParameters: queryParams);
 
-    // Log request details
-    print('=== REQUEST ===');
-    print('Method: PATCH');
-    print('URL: $uri');
-    print('Headers: $headers');
-    print('Query Params: $queryParams');
-    print('===============\n');
-
+   
     var response = await http.patch(
       uri,
       headers: headers,
     );
 
-    // Log response details
-    print('=== RESPONSE ===');
-    print('Status Code: ${response.statusCode}');
-    print('Headers: ${response.headers}');
-    print('Body: ${response.body}');
-    print('================\n');
-
+  
     Map<String, dynamic> results = jsonDecode(response.body);
 
     if (response.statusCode == 200) {
@@ -317,35 +303,82 @@ class AuthService {
     }
   }
 
-  // Verify OTP
-  Future<VerifyOtpModel> postVerifyOtp(String phone, String otp) async {
-    try {
-      final response = await http.post(
-        Uri.parse('${dotenv.get('mainUrl')}/clients/verify-otp'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'phone': phone,
-          'otp': otp,
-        }),
-      );
+  // Verify OTP — referral code is now optional and passed in, not hardcoded
+Future<VerifyOtpModel> postVerifyOtp(
+  String phone,
+  String otp, {
+  String? referralCode,
+}) async {
+  try {
+    final Map<String, dynamic> body = {
+      'phone': phone,
+      'otp': otp,
+    };
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final jsonResponse = jsonDecode(response.body);
-        return VerifyOtpModel.fromJson(jsonResponse);
-      } else {
-        final errorResponse = jsonDecode(response.body);
-        return VerifyOtpModel(
-          success: false,
-          message: errorResponse['message'] ?? 'Verification failed',
-        );
-      }
-    } catch (e) {
+    if (referralCode != null && referralCode.trim().isNotEmpty) {
+      body['referralCode'] = referralCode.trim();
+    }
+
+    final response = await http.post(
+      Uri.parse('${dotenv.get('mainUrl')}/clients/verify-otp'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(body),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final jsonResponse = jsonDecode(response.body);
+      return VerifyOtpModel.fromJson(jsonResponse);
+    } else {
+      final errorResponse = jsonDecode(response.body);
       return VerifyOtpModel(
         success: false,
-        message: 'Network error: ${e.toString()}',
+        message: errorResponse['message'] ?? 'Verification failed',
       );
     }
+  } catch (e) {
+    return VerifyOtpModel(
+      success: false,
+      message: 'Network error: ${e.toString()}',
+    );
   }
+}
+
+// NEW: lets a client add a referral code after registration
+// Apply a referral code as a client (matches POST /api/referrals/apply)
+Future<VerifyOtpModel> postAddReferralCode(
+  String clientId,
+  String referralCode,
+) async {
+  try {
+    final response = await http.post(
+      Uri.parse('${dotenv.get('mainUrl')}/referrals/apply'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'code': referralCode.trim(),
+        'clientId': int.tryParse(clientId) ?? clientId,
+      }),
+    );
+
+    final jsonResponse = jsonDecode(response.body);
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return VerifyOtpModel(
+        success: jsonResponse['success'] ?? true,
+        message: jsonResponse['message'] ?? 'Referral code applied successfully',
+      );
+    } else {
+      return VerifyOtpModel(
+        success: false,
+        message: jsonResponse['message'] ?? 'Failed to apply referral code',
+      );
+    }
+  } catch (e) {
+    return VerifyOtpModel(
+      success: false,
+      message: 'Network error: ${e.toString()}',
+    );
+  }
+}
 
   // Resend OTP
   Future<VerifyOtpModel> postResendOtp(String phone) async {
@@ -380,6 +413,7 @@ class AuthService {
     }
   }
 
+
   Future<ActiveRequestModel> getActiveRequest(int clientId) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -401,7 +435,8 @@ class AuthService {
 
       if (response.statusCode == 200) {
         final jsonData = jsonDecode(response.body);
-        debugPrint(jsonData.toString());
+    
+    
         return ActiveRequestModel.fromJson(jsonData);
       } else if (response.statusCode == 404) {
         // No active request found
@@ -411,11 +446,106 @@ class AuthService {
           data: null,
         );
       } else {
-        throw Exception(
-            'Failed to load active request: ${response.statusCode}');
+        throw Exception('Failed to load active request: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Error fetching active request: $e');
     }
   }
+
+  Future<ClientStatisticsModel> fetchClientStatistics(String clientId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final response = await http.get(
+        Uri.parse('${dotenv.get('mainUrl')}/clients/$clientId/statistics'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Request timeout');
+        },
+      );
+
+      final payload = jsonDecode(response.body) as Map<String, dynamic>;
+
+
+      if (response.statusCode == 200) {
+        return ClientStatisticsModel.fromJson(payload);
+      }
+
+      return ClientStatisticsModel(
+        message: payload['message'] as String? ?? 'Failed to load client statistics',
+        success: false,
+        data: null,
+      );
+    } catch (e) {
+      return ClientStatisticsModel(
+        message: 'Error fetching client statistics: $e',
+        success: false,
+        data: null,
+      );
+    }
+  }
+
+  Future<RequestContent?> getRequestById(String requestId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('authToken');
+      final headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        if (token != null) 'Authorization': 'Bearer $token',
+      };
+
+      final paths = [
+        '/requests/$requestId',
+        '/courier/requests/$requestId',
+      ];
+
+      for (final path in paths) {
+        final response = await http.get(
+          Uri.parse('${dotenv.get('mainUrl')}$path'),
+          headers: headers,
+        ).timeout(
+          const Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('Request timeout');
+          },
+        );
+
+        if (response.statusCode == 404) {
+          continue;
+        }
+
+        if (response.statusCode != 200) {
+          throw Exception('Failed to load request details: ${response.statusCode}');
+        }
+
+        final payload = jsonDecode(response.body);
+        if (payload is! Map<String, dynamic>) {
+          throw Exception('Unexpected request payload shape');
+        }
+
+        final data = payload['data'];
+        if (data is Map<String, dynamic>) {
+          return RequestContent.fromJson(data);
+        }
+
+        if (data is Map) {
+          return RequestContent.fromJson(Map<String, dynamic>.from(data));
+        }
+
+        return null;
+      }
+
+      return null;
+    } catch (e) {
+      throw Exception('Error fetching request by id: $e');
+    }
+  }
+ 
 }

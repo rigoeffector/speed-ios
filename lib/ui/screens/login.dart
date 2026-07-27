@@ -52,6 +52,8 @@ class _LoginState extends State<Login> {
     super.dispose();
   }
 
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -349,6 +351,7 @@ class _LoginState extends State<Login> {
 
                       String obtainedClientId =
                           state.userLoginModel.userLoginData!.id.toString();
+
 
                       context.safeGoNamed(home, params: {
                         'userId': obtainedClientId,

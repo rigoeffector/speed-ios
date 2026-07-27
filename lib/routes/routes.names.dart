@@ -13,3 +13,5 @@ String myHistory = 'myHistory';
 String myLocation = 'myLocation';
 String myRequests = 'myRequests';
 String clientDirections = 'clientDirections';
+String addReferralCode = 'addReferralCode';
+

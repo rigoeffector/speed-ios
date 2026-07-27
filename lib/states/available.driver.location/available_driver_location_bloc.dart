@@ -1,6 +1,5 @@
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
-
 import '../../api/location.service.dart';
 import '../../model/available.driver/available.driver.on.map.model.dart';
 

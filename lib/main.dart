@@ -35,9 +35,9 @@ import 'package:flutter_phoenix/flutter_phoenix.dart';
 import 'controllers/language_controller.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+ 
 import 'firebase_options.dart';
-import 'package:speed_ios/api/firebase.notification.service.dart';
-
 
 Future<void> main() async {
   if (kReleaseMode) {
@@ -50,10 +50,7 @@ Future<void> main() async {
     await dotenv.load(fileName: '.env');
   }
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-     options: DefaultFirebaseOptions.currentPlatform,
-  );
-  // await FirebaseApi().initNotifications();
+   await _initializeFirebase();
   await EasyLocalization.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
@@ -68,13 +65,109 @@ Future<void> main() async {
       ],
       child: EasyLocalization(
           supportedLocales: const [Locale('en', 'US'), Locale('fr', 'FR')],
-          path:
-              'assets/translations', // <-- change the path of the translation files
+          path: 'assets/translations',
           fallbackLocale: const Locale('en', 'US'),
           useFallbackTranslations: true,
           child: Phoenix(child: MyApp(showHome: showHome)))));
 }
+Future<void> _initializeFirebase() async {
+  if (kDebugMode) {
+    print('\n🔥 Initializing Firebase...');
+  }
 
+  try {
+    // Initialize Firebase only if not already initialized
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      if (kDebugMode) {
+        print('✅ Firebase initialized successfully');
+      }
+    } else {
+      if (kDebugMode) {
+        print('ℹ️ Firebase already initialized');
+      }
+    }
+
+    // Get database instance and verify URL
+    final database = FirebaseDatabase.instance;
+    final databaseUrl = database.databaseURL;
+    
+    if (kDebugMode) {
+      print('📍 Database URL: $databaseUrl');
+    }
+
+    if (databaseUrl == null || databaseUrl.isEmpty) {
+      if (kDebugMode) {
+        print('❌ ERROR: Database URL is null or empty!');
+        print('   Please check firebase_options.dart');
+      }
+      return;
+    }
+
+    // Enable persistence for offline support
+    try {
+      database.setPersistenceEnabled(true);
+      database.setPersistenceCacheSizeBytes(10000000); // 10MB
+      
+      if (kDebugMode) {
+        print('✅ Firebase persistence enabled (10MB cache)');
+        database.setLoggingEnabled(true);
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('⚠️ Persistence already enabled: $e');
+      }
+    }
+
+    // Test connection
+    if (kDebugMode) {
+      print('🔍 Testing Firebase connection...');
+      _testFirebaseConnection();
+    }
+  } catch (e) {
+    if (kDebugMode) {
+      print('❌ Firebase initialization error: $e');
+      print('   Stack trace: ${StackTrace.current}');
+    }
+  }
+}
+
+Future<void> _testFirebaseConnection() async {
+  try {
+    final connectedRef = FirebaseDatabase.instance.ref('.info/connected');
+    
+    // Set a timeout for the connection test
+    final subscription = connectedRef.onValue.timeout(
+      const Duration(seconds: 10),
+    ).listen(
+      (event) {
+        final connected = event.snapshot.value as bool? ?? false;
+        if (kDebugMode) {
+          print(connected 
+            ? '✅ Firebase Realtime Database: CONNECTED' 
+            : '🔴 Firebase Realtime Database: DISCONNECTED'
+          );
+        }
+      },
+      onError: (error) {
+        if (kDebugMode) {
+          print('❌ Firebase connection test error: $error');
+        }
+      },
+    );
+
+    // Clean up after 15 seconds
+    Future.delayed(const Duration(seconds: 15), () {
+      subscription.cancel();
+    });
+  } catch (e) {
+    if (kDebugMode) {
+      print('❌ Connection test failed: $e');
+    }
+  }
+}
 class MyApp extends StatefulWidget {
   final bool showHome;
   const MyApp({Key? key, required this.showHome}) : super(key: key);
@@ -84,6 +177,9 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  bool _isInitializing = true;
+  bool _updateCheckComplete = false;
+
   Future<void> requestLocationPermission() async {
     LocationPermission permission;
 
@@ -100,29 +196,73 @@ class _MyAppState extends State<MyApp> {
       return;
     }
 
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-    print('Current location: ${position.latitude}, ${position.longitude}');
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      print('Current location: ${position.latitude}, ${position.longitude}');
+    } catch (e) {
+      print('Error getting location: $e');
+    }
   }
 
   @override
   void initState() {
-    requestLocationPermission();
-    _checkForAppUpdate();
-
     super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      // Run location permission and update check in parallel
+      await Future.wait([
+        requestLocationPermission(),
+        _checkForAppUpdate(),
+      ]);
+    } catch (e) {
+      print('Error during app initialization: $e');
+    } finally {
+      // Mark initialization as complete
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+          _updateCheckComplete = true;
+        });
+      }
+    }
   }
 
   Future<void> _checkForAppUpdate() async {
+    // Only check for updates on Android
+    if (!Platform.isAndroid) {
+      print('Update check skipped: Not on Android platform');
+      return;
+    }
+
     try {
+      print('Checking for app updates...');
+      
       AppUpdateInfo updateInfo = await InAppUpdate.checkForUpdate();
+      print('Update availability: ${updateInfo.updateAvailability}');
 
       if (updateInfo.updateAvailability == UpdateAvailability.updateAvailable) {
-        // Immediate Update
-        await InAppUpdate.performImmediateUpdate();
-        // _showUpdatePage();
+        print('Update available - initiating immediate update');
+        
+        // Check if immediate update is allowed
+        if (updateInfo.immediateUpdateAllowed) {
+          await InAppUpdate.performImmediateUpdate();
+          print('Immediate update completed');
+        } else if (updateInfo.flexibleUpdateAllowed) {
+          // Optional: Handle flexible update if immediate is not allowed
+          print('Flexible update available but immediate update not allowed');
+          await InAppUpdate.startFlexibleUpdate();
+          await InAppUpdate.completeFlexibleUpdate();
+        }
+      } else {
+        print('No update available');
       }
+    } on PlatformException catch (e) {
+      print('Platform exception during update check: ${e.code} - ${e.message}');
     } catch (e) {
       print('Failed to check for update: $e');
     }
@@ -132,13 +272,43 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
         statusBarColor: primaryColor,
-        statusBarIconBrightness: Brightness.light, // For Android (dark icons)
+        statusBarIconBrightness: Brightness.light,
         statusBarBrightness: Brightness.light));
+
+    // Show loading screen while initializing
+    if (_isInitializing) {
+      return const MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          backgroundColor: primaryColor,
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+                SizedBox(height: 20),
+                Text(
+                  'Checking for updates...',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Proceed with normal app initialization after update check
     return MultiBlocProvider(
       providers: [
         BlocProvider<RegisterClientBloc>(
             create: (_) =>
-                RegisterClientBloc(RegisterClientLoading(), AuthService())),
+                RegisterClientBloc(const RegisterClientLoading(), AuthService())),
         BlocProvider<UpdateClientBloc>(
             create: (_) =>
                 UpdateClientBloc(UpdateClientInitial(), AuthService())),
@@ -175,16 +345,13 @@ class _MyAppState extends State<MyApp> {
                 CreateRequestBloc(CreateRequestInitial(), AuthService())),
         BlocProvider<ReceivedSentRequestsBloc>(
           create: (context) => ReceivedSentRequestsBloc(
-            requestsRepository:
-                RequestsRepository(), // Use the instance created above
+            requestsRepository: RequestsRepository(),
           ),
         ),
         BlocProvider<VerifyOtpBloc>(
             create: (_) => VerifyOtpBloc(VerifyOtpInitial(), AuthService())),
         BlocProvider(
-          create: (context) => ActiveRequestBloc(
-            AuthService(),
-          ),
+          create: (context) => ActiveRequestBloc(AuthService()),
         ),
       ],
       child: MaterialApp.router(
@@ -204,7 +371,7 @@ class _MyAppState extends State<MyApp> {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           visualDensity: VisualDensity.adaptivePlatformDensity,
-          primaryColor: Color.fromARGB(255, 18, 170, 112),
+          primaryColor: primaryColor,
         ),
       ),
     );

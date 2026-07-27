@@ -59,3 +59,27 @@ class ResendOtpError extends VerifyOtpState {
   @override
   List<Object?> get props => [message];
 }
+
+class AddReferralCodeLoading extends VerifyOtpState {}
+
+class AddReferralCodeSuccess extends VerifyOtpState {
+  final String message;
+
+  const AddReferralCodeSuccess({
+    this.message = 'Referral code added successfully',
+  });
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class AddReferralCodeError extends VerifyOtpState {
+  final String message;
+
+  const AddReferralCodeError({
+    required this.message,
+  });
+
+  @override
+  List<Object?> get props => [message];
+}

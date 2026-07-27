@@ -24,10 +24,7 @@ class DefaultFirebaseOptions {
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for android - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return android;
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
@@ -52,13 +49,23 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyAbk4oVL9YZ70jm8qwv4P8V--zGIUxfQIc',
-    appId: '1:98877205990:ios:b5639d02e49b2f1e15fa27',
-    messagingSenderId: '98877205990',
-    projectId: 'mopay-20416',
-    databaseURL: 'https://mopay-20416-default-rtdb.firebaseio.com',
-    storageBucket: 'mopay-20416.firebasestorage.app',
-    iosBundleId: 'ios.speed.com',
+  static const FirebaseOptions android = FirebaseOptions(
+    apiKey: 'AIzaSyAprsmOtWPnQwODBnNuNFwUg5PNXwH2mTs',
+    appId: '1:19464860322:android:08ff1600d87fcc4c2e5dfb',
+    messagingSenderId: '19464860322',
+    projectId: 'gerayo-amahoro-speed',
+    databaseURL: 'https://gerayo-amahoro-speed-default-rtdb.firebaseio.com',
+    storageBucket: 'gerayo-amahoro-speed.firebasestorage.app',
   );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyAeP6BmLDDckcJKnKBQgnmD0NxP4TS0gdI',
+    appId: '1:19464860322:ios:23dc50c7ffa26b452e5dfb',
+    messagingSenderId: '19464860322',
+    projectId: 'gerayo-amahoro-speed',
+    databaseURL: 'https://gerayo-amahoro-speed-default-rtdb.firebaseio.com',
+    storageBucket: 'gerayo-amahoro-speed.firebasestorage.app',
+    iosBundleId: 'com.speed.gerayoamahoro',
+  );
+
 }

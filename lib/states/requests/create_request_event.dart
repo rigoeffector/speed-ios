@@ -13,32 +13,16 @@ class StartEvent extends CreateRequestEvent {}
 
 // Event to handle the creation of a request
 class HandleCreateRequest extends CreateRequestEvent {
-  final int motorBikerId;
-  final int clientId;
-  final String requestType;
-  final DateTime requestedTime;
-  final String originLocation;
-  final String destinationLocation;
+  final Map<String, dynamic> requestBody;
   final String status;
+  final String requestType;
 
   HandleCreateRequest({
-    required this.motorBikerId,
-    required this.clientId,
-    required this.requestType,
-    required this.requestedTime,
-    required this.originLocation,
-    required this.destinationLocation,
+    required this.requestBody,
     required this.status,
+    this.requestType = 'RIDE',
   });
 
-  // @override
-  // List<Object> get props => [
-  //       motorBikerId,
-  //       clientId,
-  //       requestType,
-  //       requestedTime,
-  //       originLocation,
-  //       destinationLocation,
-  //       status,
-  //     ];
+  @override
+  List<Object> get props => [requestBody, status, requestType];
 }

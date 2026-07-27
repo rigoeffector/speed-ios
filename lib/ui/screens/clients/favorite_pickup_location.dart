@@ -114,7 +114,25 @@ class _FavoritePickUpLocationState extends State<FavoritePickUpLocation> {
     Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high);
     currentPosition = position;
- 
+
+    // var data = await Geocoder2.getDataFromCoordinates(
+    //     latitude: currentPosition!.latitude,
+    //     longitude: currentPosition!.longitude,
+    //     googleMapApiKey: dotenv.get('apiKey'));
+
+    // if (kDebugMode) {
+    //   print("/////////// $currentPosition  //////////////");
+    // }
+    // if (kDebugMode) {
+    //   print(data.address);
+    // }
+    // setState(() {
+    //   myCurrentAddress = data.address;
+    //   sLat = data.latitude;
+    //   sLng = data.longitude;
+    //   isLocationAvailable = true;
+    //   isLoading = false;
+    // });
   }
 
   @override
@@ -327,8 +345,7 @@ class _FavoritePickUpLocationState extends State<FavoritePickUpLocation> {
                             onPressed: () {
                               setState(() {
                                 isLoading = true;
-                          
-                          
+                                locatePosition();
                               });
                             },
                             child: const Row(
